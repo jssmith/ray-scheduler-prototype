@@ -1,0 +1,34 @@
+{
+  "taskRoots": [
+    1
+  ],
+  "tasks": [
+    {
+      "taskId": 1,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "schedules": [
+            {
+              "taskId": 2,
+              "timeOffset": 1.0
+            }
+          ],
+          "duration": 1.0
+        }
+      ]
+    },
+    {
+      "taskId": 2,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "schedules": [],
+          "duration": 2.0
+        }
+      ]
+    }
+  ]
+}

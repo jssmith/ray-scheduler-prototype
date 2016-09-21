@@ -33,6 +33,12 @@
           "schedules": [],
           "duration": 0.2
         }
+      ],
+      "results": [
+        {
+          "objectId": 1,
+          "size": 100
+        }
       ]
     },
     {
@@ -44,6 +50,12 @@
           "schedules": [],
           "duration": 1.5
         }
+      ],
+      "results": [
+        {
+          "objectId": 2,
+          "size": 100
+        }
       ]
     },
     {
@@ -54,6 +66,12 @@
           "dependsOn": [],
           "schedules": [],
           "duration": 1.8
+        }
+      ],
+      "results": [
+        {
+          "objectId": 3,
+          "size": 100
         }
       ]
     },
@@ -68,6 +86,12 @@
           ],
           "schedules": [],
           "duration": 1.0
+        }
+      ],
+      "results": [
+        {
+          "objectId": 4,
+          "size": 100
         }
       ]
     }

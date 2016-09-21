@@ -12,22 +12,20 @@
           "schedules": [
             {
               "taskId": 2,
-              "timeOffset": 0.1
+              "timeOffset": 1.0
             }
           ],
-          "duration": 0.1
-        },
-        {
-          "phaseId": 1,
-          "dependsOn": [],
-          "schedules": [],
-          "duration": 0.9
+          "duration": 1.0
         }
       ],
       "results": [
         {
-          "objectId": 1,
+          "objectId": 101,
           "size": 100
+        },
+        {
+          "objectId": 102,
+          "size": 200
         }
       ]
     },
@@ -36,14 +34,31 @@
       "phases": [
         {
           "phaseId": 0,
-          "dependsOn": [],
+          "dependsOn": [101],
           "schedules": [],
           "duration": 2
         }
       ],
       "results": [
         {
-          "objectId": 2,
+          "objectId": 201,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 3,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [201, 102],
+          "schedules": [],
+          "duration": 1
+        }
+      ],
+      "results": [
+        {
+          "objectId": 301,
           "size": 100
         }
       ]

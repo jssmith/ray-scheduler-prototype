@@ -12,6 +12,12 @@
           "schedules": [],
           "duration": 1.0
         }
+      ],
+      "results": [
+        {
+          "objectId": 1,
+          "size": 100
+        }
       ]
     }
   ]

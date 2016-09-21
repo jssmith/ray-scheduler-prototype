@@ -1,3 +1,5 @@
+import abc
+
 class ScheduleTaskUpdate():
     def __init__(self, task):
         self._task = task
@@ -38,31 +40,86 @@ class ShutdownUpdate():
         return 'Shutdown()'
 
 class AbstractSchedulerDatabase():
+    __metaclass__ = abc.ABCMeta
 
+    @abc.abstractmethod
     def schedule(self, task):
-        print 'Not implemented: schedule'
-        sys.exit(1)
+        """Submit a task to the scheduler
 
+           May be called by a driver or a worker program, either
+           directly or by proxy through the local scheduler.
+
+           Args:
+               task: Task object describing task to schedule
+        """
+        return
+
+    @abc.abstractmethod
     def finished(self, task_id):
-        print 'Not implemented: finished'
-        sys.exit(1)
+        """Report task completion to the scheduler
 
+           May be called by a worker program, either
+           directly or by proxy through the local scheduler.
+
+           Args:
+               task_id: id of the completed task
+        """
+        return
+
+    @abc.abstractmethod
     def register_node(self, node_id, num_workers):
-        print 'Not implemented: register_node'
-        sys.exit(1)
+        """Report addition of a new node
 
+           Args:
+               node_id: id of the newly added node
+               num_workers: number of workers the node supports
+        """
+        return
+
+    @abc.abstractmethod
     def remove_node(self, node_id):
-        print 'Not implemented: remove_node'
-        sys.exit(1)
+        """Report removal of a node
 
+           Args:
+               node_id: id of the node being removed
+        """
+        return
+
+    @abc.abstractmethod
     def get_updates(self, timeout_s):
-        print 'Not implemented: get_updates'
-        sys.exit(1)
+        """May be called by a driver or a worker program, either
+           directly or by proxy through the local scheduler.
 
-    def execute(self, worker_id, task_id):
-        print 'Not implemented: execute'
-        sys.exit(1)
+           Starts returning results as soon as they become available
+           but never blocks beyond timeout_s from initiation time.
 
-    def get_work(self, worker_id, timeout_s):
-        print 'Not implemented: get_work'
-        sys.exit(1)
+           Args:
+               timeout_s: number of seconds to wait for tasks to
+                   become available
+
+           Returns:
+               generator of task objects
+        """
+        return
+
+    @abc.abstractmethod
+    def execute(self, node_id, task_id):
+        """Instruct node to execute a task
+
+           Called by the scheduler.
+
+           Args:
+               task_id: id of the completed task
+        """
+        return
+
+    @abc.abstractmethod
+    def get_work(self, node_id, timeout_s):
+        """Get tasks to execute on this node
+
+           Called by the worker or the local scheduler.
+
+           Args:
+               task_id: id of the completed task
+        """
+        return

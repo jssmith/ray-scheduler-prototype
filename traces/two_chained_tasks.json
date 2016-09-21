@@ -17,6 +17,12 @@
           ],
           "duration": 1.0
         }
+      ],
+      "results": [
+        {
+          "objectId": 1,
+          "size": 100
+        }
       ]
     },
     {
@@ -27,6 +33,12 @@
           "dependsOn": [],
           "schedules": [],
           "duration": 2.0
+        }
+      ],
+      "results": [
+        {
+          "objectId": 2,
+          "size": 100
         }
       ]
     }

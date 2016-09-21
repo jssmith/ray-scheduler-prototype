@@ -24,7 +24,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         self._ts = time_source
         self._computation = computation
 
-        self._finished_tasks = set()
+        self._finished_objects = set()
         self._pending_needs = {}
         self._pending_info = {}
         self._awaiting_completion = {}
@@ -59,13 +59,13 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
         depends_on = task_phase.get_depends_on()
         needs = []
-        for d_task_id in depends_on:
-            if not d_task_id in self._finished_tasks:
-                needs.append(d_task_id)
-                if d_task_id in self._awaiting_completion:
-                    self._awaiting_completion[d_task_id].append(task_id)
+        for d_object_id in depends_on:
+            if not d_object_id in self._finished_objects:
+                needs.append(d_object_id)
+                if d_object_id in self._awaiting_completion:
+                    self._awaiting_completion[d_object_id].append(task_id)
                 else:
-                    self._awaiting_completion[d_task_id] = [task_id]
+                    self._awaiting_completion[d_object_id] = [task_id]
         if not needs:
             self._execute_immediate(task_id, phase_id, worker_id)
         else:
@@ -73,18 +73,20 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self._pending_info[task_id] = (phase_id, worker_id)
 
     def _internal_scheduler_finish(self, task_id):
-        self._finished_tasks.add(task_id)
-        if task_id in self._awaiting_completion.keys():
-            p_task_ids = self._awaiting_completion[task_id]
-            del self._awaiting_completion[task_id]
-            for p_task_id in p_task_ids:
-                needs = self._pending_needs[p_task_id]
-                needs.remove(task_id)
-                if not needs:
-                    del self._pending_needs[p_task_id]
-                    (phase_id, worker_id) = self._pending_info[p_task_id]
-                    del self._pending_info[p_task_id]
-                    self._execute_immediate(p_task_id, phase_id, worker_id)
+        for result in self._computation.get_task(task_id).get_results():
+            object_id = result.object_id
+            self._finished_objects.add(object_id)
+            if object_id in self._awaiting_completion.keys():
+                p_task_ids = self._awaiting_completion[object_id]
+                del self._awaiting_completion[object_id]
+                for p_task_id in p_task_ids:
+                    needs = self._pending_needs[p_task_id]
+                    needs.remove(object_id)
+                    if not needs:
+                        del self._pending_needs[p_task_id]
+                        (phase_id, worker_id) = self._pending_info[p_task_id]
+                        del self._pending_info[p_task_id]
+                        self._execute_immediate(p_task_id, phase_id, worker_id)
 
     def _execute_immediate(self, task_id, phase_id, worker_id):
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
@@ -178,9 +180,10 @@ class ComputationDescription():
         return self._tasks[task_id]
 
 class Task():
-    def __init__(self, task_id, phases):
+    def __init__(self, task_id, phases, results):
         self._task_id = task_id
         self._phases = phases
+        self._results = results
 
     def id(self):
         return self._task_id
@@ -193,6 +196,9 @@ class Task():
 
     def num_phases(self):
         return len(self._phases)
+
+    def get_results(self):
+        return self._results
 
 class TaskPhase():
     def __init__(self, phase_id, depends_on, schedules, duration):
@@ -207,6 +213,11 @@ class TaskPhase():
     def get_schedules(self):
         return self._schedules
 
+class TaskResult():
+    def __init__(self, object_id, size):
+        self.object_id = object_id
+        self.size = size
+
 class TaskSchedule():
     def __init__(self, task_id, time_offset):
         self.task_id = task_id
@@ -218,10 +229,12 @@ def computation_decoder(dict):
         return TaskSchedule(dict[u'taskId'], dict[u'timeOffset'])
     if keys == frozenset([u'duration', u'phaseId', u'schedules', u'dependsOn']):
         return TaskPhase(dict[u'phaseId'],dict[u'dependsOn'],dict[u'schedules'],dict[u'duration'])
-    if keys == frozenset([u'phases', u'taskId']):
-        return Task(dict[u'taskId'], dict[u'phases'])
+    if keys == frozenset([u'phases', u'results', u'taskId']):
+        return Task(dict[u'taskId'], dict[u'phases'], dict[u'results'])
     if keys == frozenset([u'tasks', u'taskRoots']):
         return ComputationDescription(dict[u'taskRoots'], dict[u'tasks'])
+    if keys == frozenset([u'objectId', u'size']):
+        return TaskResult(dict[u'objectId'], int(dict[u'size']))
     else:
         print "unexpected map: {}".format(keys)
         sys.exit(1)

@@ -15,7 +15,7 @@ class TrivialScheduler():
         self._pending_tasks = []
         self._runnable_tasks = []
         self._executing_tasks = {}
-        self._finished_tasks = {}
+        self._finished_objects = {}
         
         self._pending_needs = {}
         self._awaiting_completion = {}
@@ -47,13 +47,13 @@ class TrivialScheduler():
         task_id = task.id()
         self._tasks[task_id] = task        
         pending_needs = []
-        for d_task_id in task.get_depends_on():
-            if d_task_id not in self._finished_tasks.keys():
-                pending_needs.append(d_task_id)
-                if d_task_id in self._awaiting_completion.keys():
-                    self._awaiting_completion[d_task_id].append(task_id)
+        for d_object_id in task.get_depends_on():
+            if d_object_id not in self._finished_objects.keys():
+                pending_needs.append(d_object_id)
+                if d_object_id in self._awaiting_completion.keys():
+                    self._awaiting_completion[d_object_id].append(task_id)
                 else:
-                    self._awaiting_completion[d_task_id] = [task_id]
+                    self._awaiting_completion[d_object_id] = [task_id]
         if len(pending_needs) > 0:
             self._pending_needs[task_id] = pending_needs
             self._pending_tasks.append(task_id)
@@ -64,17 +64,19 @@ class TrivialScheduler():
         node_id = self._executing_tasks[task_id]
         self._nodes[node_id].dec_executing()
         del self._executing_tasks[task_id]
-        self._finished_tasks[task_id] = node_id
-        if task_id in self._awaiting_completion.keys():
-            pending_task_ids = self._awaiting_completion[task_id]
-            del self._awaiting_completion[task_id]
-            for pending_task_id in pending_task_ids:
-                needs = self._pending_needs[pending_task_id]
-                needs.remove(task_id)
-                if not needs:
-                    del self._pending_needs[pending_task_id]
-                    self._pending_tasks.remove(pending_task_id)
-                    self._runnable_tasks.append(pending_task_id)
+        for result in self._tasks[task_id].get_results():
+            object_id = result.object_id
+            self._finished_objects[object_id] = node_id
+            if object_id in self._awaiting_completion.keys():
+                pending_task_ids = self._awaiting_completion[object_id]
+                del self._awaiting_completion[object_id]
+                for pending_task_id in pending_task_ids:
+                    needs = self._pending_needs[pending_task_id]
+                    needs.remove(object_id)
+                    if not needs:
+                        del self._pending_needs[pending_task_id]
+                        self._pending_tasks.remove(pending_task_id)
+                        self._runnable_tasks.append(pending_task_id)
 
     def _process_tasks(self):
             for task_id in list(self._runnable_tasks):
@@ -88,7 +90,7 @@ class TrivialScheduler():
                         if node_status.num_workers_executing < node_status.num_workers:
                             cost = 0
                             for depends_on in task_deps:
-                                if self._finished_tasks[depends_on] != node_id:
+                                if self._finished_objects[depends_on] != node_id:
                                     cost += 1
                             if cost < best_cost:
                                 best_cost = cost

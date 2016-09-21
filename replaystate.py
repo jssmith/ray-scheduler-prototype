@@ -8,7 +8,7 @@ from schedulerbase import *
 #         Scheduler Database that Previous Traces              #
 ################################################################
 
-class ReplaySchedulerDatabase():
+class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
     class ScheduledTask():
         def __init__(self, task_id, phase_id):
             self.task_id = task_id
@@ -20,7 +20,7 @@ class ReplaySchedulerDatabase():
             self.phase_id = phase_id
             self.worker_id = worker_id
 
-    def __init__(self, time_source, computation):
+    def __init__(self, time_source, computation, num_nodes, num_workers_per_node):
         self._ts = time_source
         self._computation = computation
 
@@ -28,6 +28,10 @@ class ReplaySchedulerDatabase():
         self._pending_needs = {}
         self._pending_info = {}
         self._awaiting_completion = {}
+
+        # schedule worker registration
+        for i in range(0, num_nodes):
+            self._ts.schedule_immediate(RegisterNodeUpdate(i, num_workers_per_node))
 
         # schedule roots
         for task_id in computation.get_roots():
@@ -37,7 +41,7 @@ class ReplaySchedulerDatabase():
         print 'Not implemented: schedule'
         sys.exit(1)
 
-    def finished(self, task_finished):
+    def finished(self, task_id):
         print 'Not implemented: finished'
         sys.exit(1)
 
@@ -83,20 +87,22 @@ class ReplaySchedulerDatabase():
         # This is the main loop for simulation event processing
         time_limit = self._ts.get_time() + timeout_s
         no_results = True
-        next = self._ts.advance(time_limit)
-        while next is not None:
+        nextUpdate = self._ts.advance(time_limit)
+        while nextUpdate is not None:
             no_results = False
-            if isinstance(next, self.ScheduledTask):
-                yield ScheduleTaskUpdate(self._computation.get_task(next.task_id))
-            if isinstance(next, self.TaskPhaseComplete):
-                task = self._computation.get_task(next.task_id)
-                if next.phase_id < task.num_phases() - 1:
-                    self._internal_scheduler_schedule(next.task_id, next.phase_id + 1, next.worker_id)
+            if isinstance(nextUpdate, self.ScheduledTask):
+                yield ScheduleTaskUpdate(self._computation.get_task(nextUpdate.task_id))
+            if isinstance(nextUpdate, self.TaskPhaseComplete):
+                task = self._computation.get_task(nextUpdate.task_id)
+                if nextUpdate.phase_id < task.num_phases() - 1:
+                    self._internal_scheduler_schedule(nextUpdate.task_id, nextUpdate.phase_id + 1, nextUpdate.worker_id)
                 else:
-                    print '{:.6f}: finshed task {} on worker {}'.format(self._ts.get_time(), next.task_id, next.worker_id)
-                    self._internal_scheduler_finish(next.task_id)
-                    yield FinishTaskUpdate(next.task_id)
-            next = self._ts.advance(time_limit)
+                    print '{:.6f}: finshed task {} on worker {}'.format(self._ts.get_time(), nextUpdate.task_id, nextUpdate.worker_id)
+                    self._internal_scheduler_finish(nextUpdate.task_id)
+                    yield FinishTaskUpdate(nextUpdate.task_id)
+            if isinstance(nextUpdate, RegisterNodeUpdate):
+                yield nextUpdate
+            nextUpdate = self._ts.advance(time_limit)
         if no_results and self._ts.queue_empty():
             yield ShutdownUpdate()
 

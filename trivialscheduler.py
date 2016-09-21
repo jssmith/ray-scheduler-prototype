@@ -1,19 +1,46 @@
+import sys
+
 from schedulerbase import *
+from itertools import ifilter
 
 class TrivialScheduler():
+
     def __init__(self, time_source, scheduler_db):
         self._ts = time_source
         self._db = scheduler_db
 
+        self._nodes = {}
+
         self._pending_tasks = []
         self._runnable_tasks = []
-        self._executing_tasks = []
+        self._executing_tasks = {}
         self._finished_tasks = []
         
         self._pending_needs = {}
         self._awaiting_completion = {}
 
         self._tasks = {}
+
+    class _NodeStatus:
+        def __init__(self, node_id, num_workers):
+            self.node_id = node_id
+            self.num_workers = num_workers
+            self.num_workers_executing = 0
+
+        def inc_executing(self):
+            self.num_workers_executing += 1
+
+        def dec_executing(self):
+            self.num_workers_executing -= 1
+
+        def __str__(self):
+            return 'NodeStatus({},{},{})'.format(self.node_id, self.num_workers, self.num_workers_executing)
+
+    def _register_node(self, node_id, num_workers):
+        if node_id in self._nodes.keys():
+            print 'already registered node {}'.format(node_id)
+            sys.exit(1)
+        self._nodes[node_id] = self._NodeStatus(node_id, num_workers)
 
     def _add_task(self, task):
         task_id = task.id()
@@ -33,7 +60,9 @@ class TrivialScheduler():
             self._runnable_tasks.append(task_id)
 
     def _finish_task(self, task_id):
-        self._executing_tasks.remove(task_id)
+        node_id = self._executing_tasks[task_id]
+        self._nodes[node_id].dec_executing()
+        del self._executing_tasks[task_id]
         self._finished_tasks.append(task_id)
         if task_id in self._awaiting_completion.keys():
             pending_task_ids = self._awaiting_completion[task_id]
@@ -48,10 +77,13 @@ class TrivialScheduler():
 
     def _process_tasks(self):
         for task_id in list(self._runnable_tasks):
-            # unlimited resources on one node
-            self._runnable_tasks.remove(task_id)
-            self._executing_tasks.append(task_id)
-            self._db.execute(0, task_id)
+            s = next(ifilter(lambda (node_id,node_status): node_status.num_workers_executing < node_status.num_workers, self._nodes.items()), None)
+            if s:
+                (node_id, node_status) = s
+                node_status.inc_executing()
+                self._runnable_tasks.remove(task_id)
+                self._executing_tasks[task_id] = node_id
+                self._db.execute(node_id, task_id)
 
     def run(self):
         is_shutdown = False
@@ -62,6 +94,8 @@ class TrivialScheduler():
                     self._add_task(update.get_task())
                 elif isinstance(update, FinishTaskUpdate):
                     self._finish_task(update.get_task_id())
+                elif isinstance(update, RegisterNodeUpdate):
+                    self._register_node(update.node_id, update.num_workers)
                 elif isinstance(update, ShutdownUpdate):
                     # TODO - not sure whether extra logic in shutdown
                     #        is generally needed, but useful in debugging
@@ -72,7 +106,7 @@ class TrivialScheduler():
                         print 'pending: {}'.format(str(self._pending_tasks))
                         print 'runnable: {}'.format(str(self._runnable_tasks))
                         print 'executing: {}'.format(str(self._executing_tasks))
-
+                        print 'nodes: {}'.format(','.join(map(lambda x: str(x), self._nodes.values())))
                 else:
                     print 'Unknown update ' + update.__class__.__name__
                     sys.exit(1)

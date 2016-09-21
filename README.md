@@ -9,8 +9,12 @@ Aims of the scheduler prototype include the following:
 - Able to replay production logs
 - Support unit tests for core scheduler and for database (Redis) integration
 
-## Usage
+## Usage Example
 
 ```
-for trace in $(ls traces/*.json); do python replaytrace.py $trace; done
+(NUM_NODES=2
+NUM_WORKERS_PER_NODE=5
+for trace in $(ls traces/*.json); do
+    python replaytrace.py $NUM_NODES $NUM_WORKERS_PER_NODE $trace;
+done)
 ```

@@ -5,16 +5,17 @@ from itertools import ifilter
 
 class TrivialScheduler():
 
-    def __init__(self, time_source, scheduler_db):
+    def __init__(self, time_source, scheduler_db, location_aware):
         self._ts = time_source
         self._db = scheduler_db
+        self._location_aware = location_aware
 
         self._nodes = {}
 
         self._pending_tasks = []
         self._runnable_tasks = []
         self._executing_tasks = {}
-        self._finished_tasks = []
+        self._finished_tasks = {}
         
         self._pending_needs = {}
         self._awaiting_completion = {}
@@ -47,7 +48,7 @@ class TrivialScheduler():
         self._tasks[task_id] = task        
         pending_needs = []
         for d_task_id in task.get_depends_on():
-            if d_task_id not in self._finished_tasks:
+            if d_task_id not in self._finished_tasks.keys():
                 pending_needs.append(d_task_id)
                 if d_task_id in self._awaiting_completion.keys():
                     self._awaiting_completion[d_task_id].append(task_id)
@@ -63,7 +64,7 @@ class TrivialScheduler():
         node_id = self._executing_tasks[task_id]
         self._nodes[node_id].dec_executing()
         del self._executing_tasks[task_id]
-        self._finished_tasks.append(task_id)
+        self._finished_tasks[task_id] = node_id
         if task_id in self._awaiting_completion.keys():
             pending_task_ids = self._awaiting_completion[task_id]
             del self._awaiting_completion[task_id]
@@ -76,14 +77,38 @@ class TrivialScheduler():
                     self._runnable_tasks.append(pending_task_id)
 
     def _process_tasks(self):
-        for task_id in list(self._runnable_tasks):
-            s = next(ifilter(lambda (node_id,node_status): node_status.num_workers_executing < node_status.num_workers, self._nodes.items()), None)
-            if s:
-                (node_id, node_status) = s
-                node_status.inc_executing()
-                self._runnable_tasks.remove(task_id)
-                self._executing_tasks[task_id] = node_id
-                self._db.execute(node_id, task_id)
+            for task_id in list(self._runnable_tasks):
+                if self._location_aware:
+                    task_deps = self._tasks[task_id].get_depends_on()
+                    best_node_id = None
+                    best_cost = sys.maxint
+                    # TODO short-circuit cost computation if there are no dependencies.
+                    #      also may optimize lookup strategy for one or two dependencies.
+                    for (node_id, node_status) in self._nodes.items():
+                        if node_status.num_workers_executing < node_status.num_workers:
+                            cost = 0
+                            for depends_on in task_deps:
+                                if self._finished_tasks[depends_on] != node_id:
+                                    cost += 1
+                            if cost < best_cost:
+                                best_cost = cost
+                                best_node_id = node_id
+                    if best_node_id is not None:
+                        s = (best_node_id, self._nodes[best_node_id])
+                    else:
+                        s = None
+                else:
+                    s = next(ifilter(lambda (node_id,node_status): node_status.num_workers_executing < node_status.num_workers, self._nodes.items()), None)
+                if s:
+                    (node_id, node_status) = s
+                    node_status.inc_executing()
+                    self._runnable_tasks.remove(task_id)
+                    self._executing_tasks[task_id] = node_id
+                    self._db.execute(node_id, task_id)
+                else:
+                    # Not able to schedule so return
+                    print 'unable to schedule'
+                    return
 
     def run(self):
         is_shutdown = False

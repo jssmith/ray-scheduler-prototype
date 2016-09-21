@@ -45,6 +45,15 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         print 'Not implemented: finished'
         sys.exit(1)
 
+    def register_node(self, node_id, num_workers):
+        print 'Not implemented: register_node'
+        sys.exit(1)
+
+
+    def remove_node(self, node_id):
+        print 'Not implemented: remove_node'
+        sys.exit(1)
+
     def _internal_scheduler_schedule(self, task_id, phase_id, worker_id):
         # TODO should probably always call this, even for phase 0
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)

@@ -12,9 +12,9 @@ Aims of the scheduler prototype include the following:
 ## Usage Example
 
 ```
-(NUM_NODES=2
-NUM_WORKERS_PER_NODE=5
+(NUM_NODES=3
+NUM_WORKERS_PER_NODE=1
 for trace in $(ls traces/*.json); do
-    python replaytrace.py $NUM_NODES $NUM_WORKERS_PER_NODE $trace;
+    python replaytrace.py $NUM_NODES $NUM_WORKERS_PER_NODE true $trace;
 done)
 ```

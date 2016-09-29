@@ -20,11 +20,18 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self.phase_id = phase_id
             self.worker_id = worker_id
 
-    def __init__(self, time_source, computation, num_nodes, num_workers_per_node):
+    class ObjectDescription():
+        def __init__(self, node_id, size):
+            self.node_id = node_id
+            self.size = size
+
+    def __init__(self, time_source, computation, num_nodes, num_workers_per_node, data_transfer_time_cost):
         self._ts = time_source
         self._computation = computation
+        self._data_transfer_time_cost = data_transfer_time_cost
 
-        self._finished_objects = set()
+        self._finished_objects = {}
+        self._executing_tasks = {}
         self._pending_needs = {}
         self._pending_info = {}
         self._awaiting_completion = {}
@@ -60,7 +67,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         depends_on = task_phase.get_depends_on()
         needs = []
         for d_object_id in depends_on:
-            if not d_object_id in self._finished_objects:
+            if not d_object_id in self._finished_objects.keys():
                 needs.append(d_object_id)
                 if d_object_id in self._awaiting_completion:
                     self._awaiting_completion[d_object_id].append(task_id)
@@ -73,9 +80,11 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self._pending_info[task_id] = (phase_id, worker_id)
 
     def _internal_scheduler_finish(self, task_id):
+        node_id = self._executing_tasks[task_id]
+        del self._executing_tasks[task_id]
         for result in self._computation.get_task(task_id).get_results():
             object_id = result.object_id
-            self._finished_objects.add(object_id)
+            self._finished_objects[object_id] = self.ObjectDescription(node_id, result.size)
             if object_id in self._awaiting_completion.keys():
                 p_task_ids = self._awaiting_completion[object_id]
                 del self._awaiting_completion[object_id]
@@ -88,11 +97,18 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
                         del self._pending_info[p_task_id]
                         self._execute_immediate(p_task_id, phase_id, worker_id)
 
-    def _execute_immediate(self, task_id, phase_id, worker_id):
+    def _execute_immediate(self, task_id, phase_id, node_id):
+        # TODO: enforce limit on workers per node, valid node_id
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
+        self._executing_tasks[task_id] = node_id
+        data_transfer_time = 0
+        for d_object_id in self._computation.get_task(task_id).get_phase(phase_id).get_depends_on():
+            dep_obj = self._finished_objects[d_object_id]
+            if dep_obj.node_id != node_id:
+                data_transfer_time += dep_obj.size * self._data_transfer_time_cost
         for schedule_task in task_phase.get_schedules():
-            self._ts.schedule_delayed(schedule_task.time_offset, self.ScheduledTask(schedule_task.task_id, 0))
-        self._ts.schedule_delayed(task_phase.duration, self.TaskPhaseComplete(task_id, phase_id, worker_id))
+            self._ts.schedule_delayed(data_transfer_time + schedule_task.time_offset, self.ScheduledTask(schedule_task.task_id, 0))
+        self._ts.schedule_delayed(data_transfer_time + task_phase.duration, self.TaskPhaseComplete(task_id, phase_id, node_id))
 
     def get_updates(self, timeout_s):
         # This is the main loop for simulation event processing

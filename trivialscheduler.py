@@ -118,6 +118,7 @@ class TrivialScheduler():
             for update in self._db.get_updates(10):
                 #print 'scheduler update ' + str(update)
                 if isinstance(update, ScheduleTaskUpdate):
+                    print '{} task {} submitted'.format(self._ts.get_time(), update.get_task_id())
                     self._add_task(update.get_task())
                 elif isinstance(update, FinishTaskUpdate):
                     self._finish_task(update.get_task_id())

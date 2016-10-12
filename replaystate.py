@@ -5,14 +5,15 @@ from schedulerbase import *
 
 
 ################################################################
-#         Scheduler Database that Previous Traces              #
+#        Scheduler Database that Replays Saved Traces          #
 ################################################################
 
 class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
     class ScheduledTask():
-        def __init__(self, task_id, phase_id):
+        def __init__(self, task_id, phase_id, submitting_node_id):
             self.task_id = task_id
             self.phase_id = phase_id
+            self.submitting_node_id = submitting_node_id
 
     class TaskPhaseComplete():
         def __init__(self, task_id, phase_id, worker_id):
@@ -36,13 +37,15 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         self._pending_info = {}
         self._awaiting_completion = {}
 
+        self._driver_node = 0
+
         # schedule worker registration
         for i in range(0, num_nodes):
             self._ts.schedule_immediate(RegisterNodeUpdate(i, num_workers_per_node))
 
         # schedule roots
         for task_id in computation.get_roots():
-            self._ts.schedule_immediate(self.ScheduledTask(task_id, 0))
+            self._ts.schedule_immediate(self.ScheduledTask(task_id, 0, self._driver_node))
 
     def schedule(self, task):
         print 'Not implemented: schedule'
@@ -107,7 +110,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             if dep_obj.node_id != node_id:
                 data_transfer_time += dep_obj.size * self._data_transfer_time_cost
         for schedule_task in task_phase.get_schedules():
-            self._ts.schedule_delayed(data_transfer_time + schedule_task.time_offset, self.ScheduledTask(schedule_task.task_id, 0))
+            self._ts.schedule_delayed(data_transfer_time + schedule_task.time_offset, self.ScheduledTask(schedule_task.task_id, 0, node_id))
         self._ts.schedule_delayed(data_transfer_time + task_phase.duration, self.TaskPhaseComplete(task_id, phase_id, node_id))
 
     def get_updates(self, timeout_s):
@@ -118,7 +121,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         while nextUpdate is not None:
             no_results = False
             if isinstance(nextUpdate, self.ScheduledTask):
-                yield ScheduleTaskUpdate(self._computation.get_task(nextUpdate.task_id))
+                yield ScheduleTaskUpdate(self._computation.get_task(nextUpdate.task_id), nextUpdate.submitting_node_id)
             if isinstance(nextUpdate, self.TaskPhaseComplete):
                 task = self._computation.get_task(nextUpdate.task_id)
                 if nextUpdate.phase_id < task.num_phases() - 1:

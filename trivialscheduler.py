@@ -42,9 +42,14 @@ class BaseScheduler():
             sys.exit(1)
         self._nodes[node_id] = self._NodeStatus(node_id, num_workers)
 
-    def _add_task(self, task):
+    def _schedule_locally(self, task, submitting_node_id):
+        return False
+
+    def _add_task(self, task, submitting_node_id):
         task_id = task.id()
-        self._tasks[task_id] = task        
+        self._tasks[task_id] = task
+        if self._schedule_locally(task, submitting_node_id):
+            return
         pending_needs = []
         for d_object_id in task.get_depends_on():
             if d_object_id not in self._finished_objects.keys():
@@ -65,6 +70,7 @@ class BaseScheduler():
         del self._executing_tasks[task_id]
         for result in self._tasks[task_id].get_results():
             object_id = result.object_id
+            # TODO - should be appending to list of object locations
             self._finished_objects[object_id] = node_id
             if object_id in self._awaiting_completion.keys():
                 pending_task_ids = self._awaiting_completion[object_id]
@@ -77,16 +83,20 @@ class BaseScheduler():
                         self._pending_tasks.remove(pending_task_id)
                         self._runnable_tasks.append(pending_task_id)
 
+    def _execute_task(self, node_id, task_id):
+        node_status = self._nodes[node_id]
+        node_status.inc_executing()
+        self._executing_tasks[task_id] = node_id
+        self._db.execute(node_id, task_id)
+
     def _process_tasks(self):
         for task_id in list(self._runnable_tasks):
             node_id = self._select_node(task_id)
             print "process tasks got node id {} for task id {}".format(node_id, task_id)
+
             if node_id is not None:
-                node_status = self._nodes[node_id]
-                node_status.inc_executing()
                 self._runnable_tasks.remove(task_id)
-                self._executing_tasks[task_id] = node_id
-                self._db.execute(node_id, task_id)
+                self._execute_task(node_id, task_id)
             else:
                 # Not able to schedule so return
                 print 'unable to schedule'
@@ -102,7 +112,7 @@ class BaseScheduler():
                 #print 'scheduler update ' + str(update)
                 if isinstance(update, ScheduleTaskUpdate):
                     print '{} task {} submitted'.format(self._ts.get_time(), update.get_task_id())
-                    self._add_task(update.get_task())
+                    self._add_task(update.get_task(), update.get_submitting_node_id())
                 elif isinstance(update, FinishTaskUpdate):
                     self._finish_task(update.get_task_id())
                 elif isinstance(update, RegisterNodeUpdate):
@@ -154,3 +164,18 @@ class LocationAwareScheduler(BaseScheduler):
                     best_cost = cost
                     best_node_id = node_id
         return best_node_id
+
+class TrivialLocalScheduler(TrivialScheduler):
+
+    def __init__(self, time_source, scheduler_db):
+        TrivialScheduler.__init__(self, time_source, scheduler_db)
+
+    def _schedule_locally(self, task, submitting_node_id):
+        for d_object_id in task.get_depends_on():
+            if d_object_id not in self._finished_objects.keys() or self._finished_objects[d_object_id] != submitting_node_id:
+                return False
+        node_status = self._nodes[submitting_node_id]
+        if node_status.num_workers_executing >= node_status.num_workers:
+            return False
+        self._execute_task(submitting_node_id, task.id())
+        return True

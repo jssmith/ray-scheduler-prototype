@@ -1,14 +1,18 @@
 import abc
 
 class ScheduleTaskUpdate():
-    def __init__(self, task):
+    def __init__(self, task, submitting_node_id):
         self._task = task
+        self._submitting_node_id = submitting_node_id
 
     def get_task_id(self):
         return self._task.id()
 
     def get_task(self):
         return self._task
+
+    def get_submitting_node_id(self):
+        return self._submitting_node_id
 
     def __str__(self):
         return 'ScheduleTask({})'.format(self._task.id())

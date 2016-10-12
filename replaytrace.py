@@ -1,5 +1,5 @@
 import replaystate
-from trivialscheduler import TrivialScheduler
+from trivialscheduler import TrivialScheduler, LocationAwareScheduler
 import json
 
 import sys
@@ -32,7 +32,10 @@ def run_tests(args):
 
     system_time = replaystate.SystemTime()
     scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, computation, num_nodes, num_workers_per_node, transfer_time_cost)
-    scheduler = TrivialScheduler(system_time, scheduler_db, location_aware)
+    if location_aware:
+        scheduler = LocationAwareScheduler(system_time, scheduler_db)
+    else:
+        scheduler = TrivialScheduler(system_time, scheduler_db)
     scheduler.run()
 
 if __name__ == '__main__':

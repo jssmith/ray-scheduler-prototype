@@ -3,12 +3,11 @@ import sys
 from schedulerbase import *
 from itertools import ifilter
 
-class TrivialScheduler():
+class BaseScheduler():
 
-    def __init__(self, time_source, scheduler_db, location_aware):
+    def __init__(self, time_source, scheduler_db):
         self._ts = time_source
         self._db = scheduler_db
-        self._location_aware = location_aware
 
         self._nodes = {}
 
@@ -79,38 +78,22 @@ class TrivialScheduler():
                         self._runnable_tasks.append(pending_task_id)
 
     def _process_tasks(self):
-            for task_id in list(self._runnable_tasks):
-                if self._location_aware:
-                    task_deps = self._tasks[task_id].get_depends_on()
-                    best_node_id = None
-                    best_cost = sys.maxint
-                    # TODO short-circuit cost computation if there are no dependencies.
-                    #      also may optimize lookup strategy for one or two dependencies.
-                    for (node_id, node_status) in self._nodes.items():
-                        if node_status.num_workers_executing < node_status.num_workers:
-                            cost = 0
-                            for depends_on in task_deps:
-                                if self._finished_objects[depends_on] != node_id:
-                                    cost += 1
-                            if cost < best_cost:
-                                best_cost = cost
-                                best_node_id = node_id
-                    if best_node_id is not None:
-                        s = (best_node_id, self._nodes[best_node_id])
-                    else:
-                        s = None
-                else:
-                    s = next(ifilter(lambda (node_id,node_status): node_status.num_workers_executing < node_status.num_workers, self._nodes.items()), None)
-                if s:
-                    (node_id, node_status) = s
-                    node_status.inc_executing()
-                    self._runnable_tasks.remove(task_id)
-                    self._executing_tasks[task_id] = node_id
-                    self._db.execute(node_id, task_id)
-                else:
-                    # Not able to schedule so return
-                    print 'unable to schedule'
-                    return
+        for task_id in list(self._runnable_tasks):
+            node_id = self._select_node(task_id)
+            print "process tasks got node id {} for task id {}".format(node_id, task_id)
+            if node_id is not None:
+                node_status = self._nodes[node_id]
+                node_status.inc_executing()
+                self._runnable_tasks.remove(task_id)
+                self._executing_tasks[task_id] = node_id
+                self._db.execute(node_id, task_id)
+            else:
+                # Not able to schedule so return
+                print 'unable to schedule'
+                return
+
+    def _select_node(self, task_id):
+        raise NotImplementedError()
 
     def run(self):
         is_shutdown = False
@@ -139,3 +122,35 @@ class TrivialScheduler():
                     print 'Unknown update ' + update.__class__.__name__
                     sys.exit(1)
                 self._process_tasks()
+
+class TrivialScheduler(BaseScheduler):
+
+    def __init__(self, time_source, scheduler_db):
+        BaseScheduler.__init__(self, time_source, scheduler_db)
+        #super(TrivialScheduler).__init__(time_source, scheduler_db)
+
+    def _select_node(self, task_id):
+        (best_node_id, _) = next(ifilter(lambda (node_id,node_status): node_status.num_workers_executing < node_status.num_workers, self._nodes.items()), None)
+        return best_node_id
+
+class LocationAwareScheduler(BaseScheduler):
+
+    def __init__(self, time_source, scheduler_db):
+        BaseScheduler.__init__(self, time_source, scheduler_db)
+
+    def _select_node(self, task_id):
+        task_deps = self._tasks[task_id].get_depends_on()
+        best_node_id = None
+        best_cost = sys.maxint
+        # TODO short-circuit cost computation if there are no dependencies.
+        #      also may optimize lookup strategy for one or two dependencies.
+        for (node_id, node_status) in self._nodes.items():
+            if node_status.num_workers_executing < node_status.num_workers:
+                cost = 0
+                for depends_on in task_deps:
+                    if self._finished_objects[depends_on] != node_id:
+                        cost += 1
+                if cost < best_cost:
+                    best_cost = cost
+                    best_node_id = node_id
+        return best_node_id

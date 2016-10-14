@@ -103,17 +103,17 @@ def build_tasks(object_dependencies, task_dependencies, event_log):
     return tasks
 
 def dump_tasks(tasks, trace_filename):
-    task_root = None
+    root_task = None
     for i, task in enumerate(tasks):
         if task['taskId'] == 'root':
-            task_root = tasks.pop(i)
+            root_task = tasks.pop(i)
             break
-    if task_root == None:
+    if root_task == None:
         print "Error: No task root found."
         return
     with open(trace_filename, 'w') as f:
         f.write(json.dumps({
-            'taskRoot': task_root,
+            'rootTask': root_task,
             'tasks': tasks,
             }, sort_keys=True, indent=4, separators=(',', ': ')))
 

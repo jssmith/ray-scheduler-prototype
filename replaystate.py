@@ -43,9 +43,8 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         for i in range(0, num_nodes):
             self._ts.schedule_immediate(RegisterNodeUpdate(i, num_workers_per_node))
 
-        # schedule roots
-        for task_id in computation.get_roots():
-            self._ts.schedule_immediate(self.ScheduledTask(task_id, 0, self._driver_node))
+        # schedule root task
+        self._ts.schedule_immediate(self.ScheduledTask(computation.get_root_task(), 0, self._driver_node))
 
     def schedule(self, task):
         print 'Not implemented: schedule'
@@ -186,14 +185,14 @@ class SystemTime():
 #              Data model for saved computations               #
 ################################################################
 class ComputationDescription():
-    def __init__(self, roots, tasks):
-        self._roots = roots
+    def __init__(self, root_task, tasks):
+        self._root_task = root_task
         self._tasks = {}
         for task in tasks:
             self._tasks[task.id()] = task
 
-    def get_roots(self):
-        return self._roots
+    def get_root_task(self):
+        return self._root_task
 
     def get_task(self, task_id):
         return self._tasks[task_id]
@@ -250,8 +249,8 @@ def computation_decoder(dict):
         return TaskPhase(dict[u'phaseId'],dict[u'dependsOn'],dict[u'schedules'],dict[u'duration'])
     if keys == frozenset([u'phases', u'results', u'taskId']):
         return Task(dict[u'taskId'], dict[u'phases'], dict[u'results'])
-    if keys == frozenset([u'tasks', u'taskRoots']):
-        return ComputationDescription(dict[u'taskRoots'], dict[u'tasks'])
+    if keys == frozenset([u'tasks', u'rootTask']):
+        return ComputationDescription(dict[u'rootTask'], dict[u'tasks'])
     if keys == frozenset([u'objectId', u'size']):
         return TaskResult(dict[u'objectId'], int(dict[u'size']))
     else:

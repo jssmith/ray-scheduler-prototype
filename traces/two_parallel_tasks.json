@@ -1,8 +1,5 @@
 {
-  "taskRoots": [
-    1,
-    2
-  ],
+  "rootTask": 1,
   "tasks": [
     {
       "taskId": 1,
@@ -10,8 +7,17 @@
         {
           "phaseId": 0,
           "dependsOn": [],
-          "schedules": [],
-          "duration": 1.0
+          "schedules": [
+            {
+              "taskId": 2,
+              "timeOffset": 0.0
+            },
+            {
+              "taskId": 3,
+              "timeOffset": 0.0
+            }
+          ],
+          "duration": 0.0
         }
       ],
       "results": [
@@ -26,6 +32,23 @@
       "phases": [
         {
           "phaseId": 0,
+          "dependsOn": [1],
+          "schedules": [],
+          "duration": 1.0
+        }
+      ],
+      "results": [
+        {
+          "objectId": 2,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 3,
+      "phases": [
+        {
+          "phaseId": 0,
           "dependsOn": [],
           "schedules": [],
           "duration": 2.0
@@ -33,7 +56,7 @@
       ],
       "results": [
         {
-          "objectId": 2,
+          "objectId": 3,
           "size": 100
         }
       ]

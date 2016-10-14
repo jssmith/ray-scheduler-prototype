@@ -1,7 +1,5 @@
 {
-  "taskRoots": [
-    1
-  ],
+  "rootTask": 1,
   "tasks": [
     {
       "taskId": 1,

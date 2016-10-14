@@ -1,5 +1,6 @@
 import sys
 import heapq
+import itertools
 
 from schedulerbase import *
 
@@ -43,8 +44,13 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         for i in range(0, num_nodes):
             self._ts.schedule_immediate(RegisterNodeUpdate(i, num_workers_per_node))
 
+        # count total number of phases
+        self._phases_pending = computation.get_total_num_phases()
+
         # schedule root task
-        self._ts.schedule_immediate(self.ScheduledTask(computation.get_root_task(), 0, self._driver_node))
+        root_task = computation.get_root_task()
+        if root_task is not None:
+            self._ts.schedule_immediate(self.ScheduledTask(root_task, 0, self._driver_node))
 
     def schedule(self, task):
         print 'Not implemented: schedule'
@@ -122,6 +128,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             if isinstance(nextUpdate, self.ScheduledTask):
                 yield ScheduleTaskUpdate(self._computation.get_task(nextUpdate.task_id), nextUpdate.submitting_node_id)
             if isinstance(nextUpdate, self.TaskPhaseComplete):
+                self._phases_pending -= 1
                 task = self._computation.get_task(nextUpdate.task_id)
                 if nextUpdate.phase_id < task.num_phases() - 1:
                     self._internal_scheduler_schedule(nextUpdate.task_id, nextUpdate.phase_id + 1, nextUpdate.worker_id)
@@ -132,7 +139,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             if isinstance(nextUpdate, RegisterNodeUpdate):
                 yield nextUpdate
             nextUpdate = self._ts.advance(time_limit)
-        if no_results and self._ts.queue_empty():
+        if no_results and self._phases_pending == 0 and self._ts.queue_empty():
             yield ShutdownUpdate()
 
     def execute(self, worker_id, task_id):
@@ -186,10 +193,79 @@ class SystemTime():
 ################################################################
 class ComputationDescription():
     def __init__(self, root_task, tasks):
-        self._root_task = root_task
-        self._tasks = {}
+        if root_task is None:
+            if len(tasks) != 0:
+                raise ValidationError('Too many tasks are called')
+            else:
+                self._root_task = None
+                self._tasks = {}
+                return
+
+        root_task_str = str(root_task)
+        # task ids must be unique
+        task_ids = map(lambda x: x.id(), tasks)
+        task_ids_set = frozenset(task_ids)
+        if len(task_ids_set) != len(task_ids):
+            raise ValidationError('Task ids must be unique')
+
+        # all tasks should be called exactly once
+        called_tasks = set(root_task_str)
         for task in tasks:
-            self._tasks[task.id()] = task
+            for phase_id in range(0, task.num_phases()):
+                for task_id in map(lambda x: x.task_id, task.get_phase(phase_id).get_schedules()):
+                    if task_id in called_tasks:
+                        raise ValidationError('Duplicate call to task {}'.format(task_id))
+                    if task_id not in task_ids_set:
+                        raise ValidationError('Call to undefined task {}'.format(task_id))
+                    called_tasks.add(task_id)
+        if len(called_tasks) < len(task_ids):
+            tasks_not_called = task_ids_set.difference(called_tasks)
+            raise ValidationError('Some tasks are not called: {}'.format(str(tasks_not_called)))
+        if len(called_tasks) > len(task_ids):
+            raise ValidationError('Too many tasks are called')
+
+        # no dependencies that don't get created
+        result_objects = set()
+        for task in tasks:
+            for task_result in task.get_results():
+                object_id = task_result.object_id
+                if object_id in result_objects:
+                    raise ValidationError('Duplicate result object id {}'.format(object_id))
+                result_objects.add(object_id)
+        for task in tasks:
+            for phase_id in range(0, task.num_phases()):
+                for object_id in task.get_phase(phase_id).get_depends_on():
+                    if object_id not in result_objects:
+                        raise ValidationError('Dependency on missing object id {}'.format(object_id))
+
+        # no cycles, everything reachable from roots
+        dg = DirectedGraph()
+        tasks_map = {}
+        for task in tasks:
+            tasks_map[task.id()] = task
+        for task in tasks:
+            prev_phase = None
+            for phase_id in range(0, task.num_phases()):
+                phase = task.get_phase(phase_id)
+                if prev_phase:
+                    #print "EDGE: previous phase edge"
+                    dg.add_edge(prev_phase, phase)
+                for object_id in phase.get_depends_on():
+                    #print "EDGE: phase dependency edge"
+                    dg.add_edge(object_id, phase)
+                for schedules in phase.get_schedules():
+                    #print "EDGE: phase schedules edge"
+                    dg.add_edge(phase, tasks_map[schedules.task_id].get_phase(0))
+                    # TODO object id produced in scheduling
+                prev_phase = phase
+            for task_result in task.get_results():
+                #print "EDGE: task result edge"
+                dg.add_edge(prev_phase, task_result.object_id)
+        dg.verify_dag_root(tasks_map[root_task_str].get_phase(0))
+
+        # verification passed so initialize
+        self._root_task = root_task_str
+        self._tasks = tasks_map
 
     def get_root_task(self):
         return self._root_task
@@ -197,9 +273,28 @@ class ComputationDescription():
     def get_task(self, task_id):
         return self._tasks[task_id]
 
+    def get_total_num_phases(self):
+        n = 0
+        for task_id, task in self._tasks.items():
+            n += task.num_phases()
+        return n
+
+
 class Task():
     def __init__(self, task_id, phases, results):
-        self._task_id = task_id
+        task_id_str = str(task_id)
+        if not task_id_str:
+            raise ValidationError('Task: no id provided')
+        if not len(phases):
+            raise ValidationError('Task: no phases')
+        for idx, phase in enumerate(phases):
+            if phase.phase_id != idx:
+                raise ValidationError('Task: mismatched phase id')
+        if not len(results):
+            raise ValidationError('Task: no results')
+
+        # verification passed so initialize
+        self._task_id = task_id_str
         self._phases = phases
         self._results = results
 
@@ -218,10 +313,16 @@ class Task():
     def get_results(self):
         return self._results
 
+
 class TaskPhase():
     def __init__(self, phase_id, depends_on, schedules, duration):
-        self._phase_id = phase_id
-        self._depends_on = depends_on
+        for s in schedules:
+            if s.time_offset > duration:
+                raise ValidationError('TaskPhase: schedules beyond phase duration')
+
+        # verification passed so initialize
+        self.phase_id = phase_id
+        self._depends_on = map(lambda x: str(x), depends_on)
         self._schedules = schedules
         self.duration = duration
 
@@ -231,15 +332,90 @@ class TaskPhase():
     def get_schedules(self):
         return self._schedules
 
+
 class TaskResult():
     def __init__(self, object_id, size):
-        self.object_id = object_id
+        object_id_str = str(object_id)
+        if not object_id_str:
+            raise ValidationError('TaskResult: no object id')
+        if size < 0:
+            raise ValidationError('TaskResult: invalid size - {}'.format(size))
+
+        # verification passed so initialize
+        self.object_id = object_id_str
         self.size = size
+
 
 class TaskSchedule():
     def __init__(self, task_id, time_offset):
-        self.task_id = task_id
+        task_id_str = str(task_id)
+        if not task_id_str:
+            raise ValidationError('TaskSchedule: no task id')
+
+        # verification passed so initialize
+        self.task_id = task_id_str
         self.time_offset = time_offset
+
+
+class DirectedGraph():
+    def __init__(self):
+        self._id_ct = 0
+        self._id_map = {}
+        self._edges = []
+
+    def _get_id(self, x):
+        if x in self._id_map:
+            #print 'found id for {}'.format(x)
+            new_id = self._id_map[x]
+        else:
+            #print 'missing id for {}'.format(x)
+            new_id = self._id_ct
+            self._id_map[x] = new_id
+            self._id_ct += 1
+        #print 'id for {} is {}'.format(x, new_id)
+        return new_id
+
+    def add_edge(self, a, b):
+        id_a = self._get_id(a)
+        id_b = self._get_id(b)
+        #print 'EDGE: {} => {}'.format(a, b)
+        #print 'EDGE: {} -> {}'.format(id_a, id_b)
+        self._edges.append((id_a, id_b))
+
+    def verify_dag_root(self, root):
+        root_id = self._get_id(root)
+        # check that
+        #  1/ we have a DAG
+        #  2/ all nodes reachable from the root
+        # we do this by depth-first search
+        visited = [False] * self._id_ct
+        in_chain = [False] * self._id_ct
+        edge_lists = dict(map(lambda (src_id, edges): (src_id, map(lambda x: x[1], edges)), itertools.groupby(self._edges, lambda x: x[0])))
+
+        #print 'root: {}'.format(root_id)
+        #print edge_lists
+
+        def visit(x):
+            #print 'visit {}'.format(x)
+            if in_chain[x]:
+                raise ValidationError('Cyclic dependencies')
+            in_chain[x] = True
+            if not visited[x]:
+                visited[x] = True
+                if x in edge_lists.keys():
+                    for y in edge_lists[x]:
+                        visit(y)
+            in_chain[x] = False
+
+        visit(root_id)
+        if False in visited:
+            raise ValidationError('Reachability from root')
+
+
+class ValidationError(Exception):
+    def __init__(self, message):
+        super(ValidationError, self).__init__(message)
+
 
 def computation_decoder(dict):
     keys = frozenset(dict.keys())

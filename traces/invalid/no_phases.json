@@ -1,0 +1,15 @@
+{
+  "rootTask": 1,
+  "tasks": [
+    {
+      "taskId": 1,
+      "phases": [],
+      "results": [
+        {
+          "objectId": 1,
+          "size": 100
+        }
+      ]
+    }
+  ]
+}

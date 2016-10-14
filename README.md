@@ -14,7 +14,7 @@ Aims of the scheduler prototype include the following:
 ```
 (NUM_NODES=3
 NUM_WORKERS_PER_NODE=1
-for trace in $(ls traces/*.json); do
+for trace in $(ls traces/test/*.json); do
     python replaytrace.py $NUM_NODES $NUM_WORKERS_PER_NODE 0.001 trivial $trace;
 done)
 ```

@@ -7,7 +7,7 @@ import sys
 def usage():
     print 'Usage: test_scheduler num_nodes num_workers_per_node transfer_time_cost scheduler input.json'
 
-def run_tests(args):
+def run_replay(args):
     if len(args) != 6:
         usage()
         sys.exit(1)
@@ -37,4 +37,4 @@ def run_tests(args):
     scheduler.run()
 
 if __name__ == '__main__':
-    run_tests(sys.argv)
+    run_replay(sys.argv)

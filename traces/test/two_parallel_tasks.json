@@ -10,20 +10,20 @@
           "schedules": [
             {
               "taskId": 2,
-              "timeOffset": 1.0
+              "timeOffset": 0.0
+            },
+            {
+              "taskId": 3,
+              "timeOffset": 0.0
             }
           ],
-          "duration": 1.0
+          "duration": 0.0
         }
       ],
       "results": [
         {
-          "objectId": 101,
+          "objectId": 1,
           "size": 100
-        },
-        {
-          "objectId": 102,
-          "size": 200
         }
       ]
     },
@@ -32,14 +32,14 @@
       "phases": [
         {
           "phaseId": 0,
-          "dependsOn": [101],
+          "dependsOn": [],
           "schedules": [],
-          "duration": 2
+          "duration": 1.0
         }
       ],
       "results": [
         {
-          "objectId": 201,
+          "objectId": 2,
           "size": 100
         }
       ]
@@ -49,14 +49,14 @@
       "phases": [
         {
           "phaseId": 0,
-          "dependsOn": [201, 102],
+          "dependsOn": [],
           "schedules": [],
-          "duration": 1
+          "duration": 2.0
         }
       ],
       "results": [
         {
-          "objectId": 301,
+          "objectId": 3,
           "size": 100
         }
       ]

@@ -6,7 +6,7 @@
       "phases": [
         {
           "phaseId": 0,
-          "dependsOn": [],
+          "dependsOn": [2],
           "schedules": [
             {
               "taskId": 2,
@@ -32,7 +32,7 @@
       "phases": [
         {
           "phaseId": 0,
-          "dependsOn": [1],
+          "dependsOn": [],
           "schedules": [],
           "duration": 1.0
         }

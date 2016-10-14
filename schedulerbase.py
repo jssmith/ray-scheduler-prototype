@@ -3,7 +3,7 @@ import abc
 class ScheduleTaskUpdate():
     def __init__(self, task, submitting_node_id):
         self._task = task
-        self._submitting_node_id = submitting_node_id
+        self._submitting_node_id = str(submitting_node_id)
 
     def get_task_id(self):
         return self._task.id()
@@ -15,11 +15,21 @@ class ScheduleTaskUpdate():
         return self._submitting_node_id
 
     def __str__(self):
-        return 'ScheduleTask({})'.format(self._task.id())
+        return 'ScheduleTask({},{})'.format(self._task.id(), self._submitting_node_id)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self._task == other._task and self._submitting_node_id == other._submitting_node_id
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class FinishTaskUpdate():
     def __init__(self, task_id):
-        self._task_id = task_id
+        self._task_id = str(task_id)
 
     def get_task_id(self):
         return self._task_id
@@ -27,14 +37,49 @@ class FinishTaskUpdate():
     def __str__(self):
         return 'FinishTask({})'.format(self._task_id)
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self._task_id == other._task_id
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
 class RegisterNodeUpdate():
     def __init__(self, node_id, num_workers):
-        self.node_id = node_id
+        self.node_id = str(node_id)
         self.num_workers = num_workers
+
+    def __str__(self):
+      return 'RegisterNode({},{})'.format(self.node_id, self.num_workers)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.node_id == other.node_id and self.num_workers == other.num_workers
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 class RemoveNodeUpdate():
     def __init__(self, node_id):
-        self.node_id = node_id
+        self.node_id = str(node_id)
+
+    def __str__(self):
+      return 'RemoveNode({})'.format(self.node_id)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self._node_id == other._node_id
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class ShutdownUpdate():
     def __init__(self):
@@ -42,6 +87,15 @@ class ShutdownUpdate():
 
     def __str__(self):
         return 'Shutdown()'
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return True
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 class AbstractSchedulerDatabase():
     __metaclass__ = abc.ABCMeta

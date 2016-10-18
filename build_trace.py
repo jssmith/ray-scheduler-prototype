@@ -1,5 +1,6 @@
 import os
 import simplejson as json
+from collections import defaultdict
 
 
 def parse_json_dir(log_dir):
@@ -25,7 +26,7 @@ def parse_json_dir(log_dir):
 # that produced it. The second has key task, value list of task uuids that it
 # depends on.
 def build_dependencies(event_logs):
-    object_dependencies = {}
+    object_dependencies = defaultdict(list)
     args = {}
     for event_log in event_logs:
         for event in event_log:
@@ -41,7 +42,7 @@ def build_dependencies(event_logs):
     return object_dependencies, dependencies
 
 
-def build_tasks(object_dependencies, task_dependencies, event_log):
+def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
     tasks = []
     phases = []
 
@@ -92,28 +93,33 @@ def build_tasks(object_dependencies, task_dependencies, event_log):
             tasks.append({
                 'taskId': task_id,
                 'phases': phases,
+                'results': event['results'],
                 })
+        elif event_type == 'PUT':
+            object_id = event['objectId']
+            object_dependencies[object_id].append(task_id)
 
     if task_id is None:
+        task_id = str(len(task_roots))
         tasks.append({
-            'taskId': 'root',
+            'taskId': task_id,
             'phases': phases,
+            'results': [],
             })
+        task_roots.append(task_id)
 
     return tasks
 
-def dump_tasks(tasks, trace_filename):
-    root_task = None
-    for i, task in enumerate(tasks):
-        if task['taskId'] == 'root':
-            root_task = tasks.pop(i)
-            break
-    if root_task == None:
-        print "Error: No task root found."
+def dump_tasks(task_roots, tasks, trace_filename):
+    if len(task_roots) == 0:
+        print "Error: No task roots found."
+        return
+    if len(task_roots) > 1:
+        print "Error: More than one task root."
         return
     with open(trace_filename, 'w') as f:
         f.write(json.dumps({
-            'rootTask': root_task,
+            'rootTask': task_roots[0],
             'tasks': tasks,
             }, sort_keys=True, indent=4, separators=(',', ': ')))
 
@@ -134,5 +140,7 @@ if __name__ == '__main__':
 
     event_logs = parse_json_dir(log_dir)
     obj_dependencies, task_dependencies = build_dependencies(event_logs)
-    tasks = [task for event_log in event_logs for task in build_tasks(obj_dependencies, task_dependencies, event_log)]
-    dump_tasks(tasks, 'trace.json')
+    task_roots, tasks = [], []
+    for event_log in event_logs:
+        tasks += build_tasks(obj_dependencies, task_dependencies, event_log, task_roots)
+    dump_tasks(task_roots, tasks, trace_filename)

@@ -7,7 +7,7 @@
         {
           "phaseId": 0,
           "dependsOn": [],
-          "schedules": [
+          "submits": [
             {
               "taskId": 2,
               "timeOffset": 1.0
@@ -33,7 +33,7 @@
         {
           "phaseId": 0,
           "dependsOn": [101],
-          "schedules": [],
+          "submits": [],
           "duration": 2
         }
       ],

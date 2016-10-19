@@ -7,7 +7,7 @@
         {
           "phaseId": 0,
           "dependsOn": [],
-          "schedules": [],
+          "submits": [],
           "duration": 1.0
         }
       ],

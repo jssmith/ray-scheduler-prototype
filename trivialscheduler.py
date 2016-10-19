@@ -87,7 +87,7 @@ class BaseScheduler():
         node_status = self._nodes[node_id]
         node_status.inc_executing()
         self._executing_tasks[task_id] = node_id
-        self._db.execute(node_id, task_id)
+        self._db.schedule(node_id, task_id)
 
     def _process_tasks(self):
         for task_id in list(self._runnable_tasks):
@@ -110,7 +110,7 @@ class BaseScheduler():
         while not is_shutdown:
             for update in self._db.get_updates(10):
                 #print 'scheduler update ' + str(update)
-                if isinstance(update, ScheduleTaskUpdate):
+                if isinstance(update, SubmitTaskUpdate):
                     print '{} task {} submitted'.format(self._ts.get_time(), update.get_task_id())
                     self._add_task(update.get_task(), update.get_submitting_node_id())
                 elif isinstance(update, FinishTaskUpdate):

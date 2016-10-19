@@ -7,7 +7,7 @@
         {
           "phaseId": 0,
           "dependsOn": [],
-          "schedules": [
+          "submits": [
             {
               "taskId": 2,
               "timeOffset": 0.1
@@ -28,7 +28,7 @@
           "dependsOn": [
             4
           ],
-          "schedules": [],
+          "submits": [],
           "duration": 0.2
         }
       ],
@@ -45,7 +45,7 @@
         {
           "phaseId": 0,
           "dependsOn": [],
-          "schedules": [],
+          "submits": [],
           "duration": 1.5
         }
       ],
@@ -62,7 +62,7 @@
         {
           "phaseId": 0,
           "dependsOn": [],
-          "schedules": [],
+          "submits": [],
           "duration": 1.8
         }
       ],
@@ -82,7 +82,7 @@
             2,
             3
           ],
-          "schedules": [],
+          "submits": [],
           "duration": 1.0
         }
       ],

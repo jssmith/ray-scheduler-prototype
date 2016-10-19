@@ -1,6 +1,6 @@
 import abc
 
-class ScheduleTaskUpdate():
+class SubmitTaskUpdate():
     def __init__(self, task, submitting_node_id):
         self._task = task
         self._submitting_node_id = str(submitting_node_id)
@@ -101,7 +101,7 @@ class AbstractSchedulerDatabase():
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
-    def schedule(self, task):
+    def submit(self, task):
         """Submit a task to the scheduler
 
            May be called by a driver or a worker program, either
@@ -161,7 +161,7 @@ class AbstractSchedulerDatabase():
         return
 
     @abc.abstractmethod
-    def execute(self, node_id, task_id):
+    def schedule(self, node_id, task_id):
         """Instruct node to execute a task
 
            Called by the scheduler.

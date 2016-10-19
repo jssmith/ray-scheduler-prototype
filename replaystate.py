@@ -52,8 +52,8 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         if root_task is not None:
             self._ts.schedule_immediate(self.ScheduledTask(root_task, 0, self._driver_node))
 
-    def schedule(self, task):
-        print 'Not implemented: schedule'
+    def submit(self, task):
+        print 'Not implemented: submit'
         sys.exit(1)
 
     def finished(self, task_id):
@@ -126,7 +126,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         while nextUpdate is not None:
             no_results = False
             if isinstance(nextUpdate, self.ScheduledTask):
-                yield ScheduleTaskUpdate(self._computation.get_task(nextUpdate.task_id), nextUpdate.submitting_node_id)
+                yield SubmitTaskUpdate(self._computation.get_task(nextUpdate.task_id), nextUpdate.submitting_node_id)
             if isinstance(nextUpdate, self.TaskPhaseComplete):
                 self._phases_pending -= 1
                 task = self._computation.get_task(nextUpdate.task_id)
@@ -142,7 +142,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         if no_results and self._phases_pending == 0 and self._ts.queue_empty():
             yield ShutdownUpdate()
 
-    def execute(self, worker_id, task_id):
+    def schedule(self, worker_id, task_id):
         print '{:.6f}: execute task {} on worker {}'.format(self._ts.get_time(), task_id, worker_id)
         self._execute_immediate(task_id, 0, worker_id)
 
@@ -346,11 +346,11 @@ class TaskResult():
         self.size = size
 
 
-class TaskSchedule():
+class TaskSubmit():
     def __init__(self, task_id, time_offset):
         task_id_str = str(task_id)
         if not task_id_str:
-            raise ValidationError('TaskSchedule: no task id')
+            raise ValidationError('TaskSubmit: no task id')
 
         # verification passed so initialize
         self.task_id = task_id_str
@@ -420,9 +420,9 @@ class ValidationError(Exception):
 def computation_decoder(dict):
     keys = frozenset(dict.keys())
     if keys == frozenset([u'timeOffset', 'taskId']):
-        return TaskSchedule(dict[u'taskId'], dict[u'timeOffset'])
-    if keys == frozenset([u'duration', u'phaseId', u'schedules', u'dependsOn']):
-        return TaskPhase(dict[u'phaseId'],dict[u'dependsOn'],dict[u'schedules'],dict[u'duration'])
+        return TaskSubmit(dict[u'taskId'], dict[u'timeOffset'])
+    if keys == frozenset([u'duration', u'phaseId', u'submits', u'dependsOn']):
+        return TaskPhase(dict[u'phaseId'],dict[u'dependsOn'],dict[u'submits'],dict[u'duration'])
     if keys == frozenset([u'phases', u'results', u'taskId']):
         return Task(dict[u'taskId'], dict[u'phases'], dict[u'results'])
     if keys == frozenset([u'tasks', u'rootTask']):

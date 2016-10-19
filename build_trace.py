@@ -48,7 +48,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log):
     task_id = None
     phase = 0
     depends_on = []
-    schedules = []
+    submits = []
     cur_time = 0
 
     for event in event_log:
@@ -61,32 +61,32 @@ def build_tasks(object_dependencies, task_dependencies, event_log):
             else:
                 offset = event['time'] - cur_time
             schedule['timeOffset'] = offset
-            schedules.append(schedule)
+            submits.append(schedule)
         elif event_type == 'BEGIN':
             phases = []
             task_id = event['taskId']
             phase = 0
             depends_on = task_dependencies[task_id]
-            schedules = []
+            submits = []
             cur_time = event['time']
         elif event_type == 'PHASE_END':
             phases.append({
                 'phaseId': phase,
                 'dependsOn': depends_on,
-                'schedules': schedules,
+                'submits': submits,
                 'duration': event['time'] - cur_time,
                 })
         elif event_type == 'PHASE_BEGIN':
             phase += 1
             depends_on = [object_dependencies[object_id] for object_id in
                           event['dependsOn']]
-            schedules = []
+            submits = []
             cur_time = event['time']
         elif event_type == 'END':
             phases.append({
                 'phaseId': phase,
                 'dependsOn': depends_on,
-                'schedules': schedules,
+                'submits': submits,
                 'duration': event['time'] - cur_time,
                 })
             tasks.append({

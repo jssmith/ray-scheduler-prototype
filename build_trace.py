@@ -63,6 +63,10 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
                 offset = event['time'] - cur_time
             schedule['timeOffset'] = offset
             submits.append(schedule)
+        elif event_type == 'DRIVER_BEGIN':
+            assert(task_id == None)
+            cur_time = event['time']
+            print "Program began at ", cur_time
         elif event_type == 'BEGIN':
             phases = []
             task_id = event['taskId']
@@ -79,8 +83,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
                 })
         elif event_type == 'PHASE_BEGIN':
             phase += 1
-            depends_on = [object_dependencies[object_id] for object_id in
-                          event['dependsOn']]
+            depends_on = event['dependsOn']
             submits = []
             cur_time = event['time']
         elif event_type == 'END':
@@ -99,6 +102,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
             object_id = event['objectId']
             object_dependencies[object_id].append(task_id)
 
+    # The task ID should not be set if this the driver program.
     if task_id is None:
         task_id = str(len(task_roots))
         tasks.append({
@@ -111,12 +115,14 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
     return tasks
 
 def dump_tasks(task_roots, tasks, trace_filename):
+    # There should only be one driver program.
     if len(task_roots) == 0:
         print "Error: No task roots found."
         return
     if len(task_roots) > 1:
         print "Error: More than one task root."
         return
+    # Write out the trace.
     with open(trace_filename, 'w') as f:
         f.write(json.dumps({
             'rootTask': task_roots[0],

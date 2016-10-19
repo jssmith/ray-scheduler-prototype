@@ -22,6 +22,11 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self.phase_id = phase_id
             self.worker_id = worker_id
 
+        def __str__(self):
+            return ('TaskPhaseComplete({0}, {1}, {2})'.format(self.task_id,
+                                                              self.phase_id,
+                                                              self.worker_id))
+
     class ObjectDescription():
         def __init__(self, node_id, size):
             self.node_id = node_id
@@ -181,6 +186,7 @@ class SystemTime():
             (self._t, data) = heapq.heappop(self._scheduled)
             return data
         else:
+            self._t += time_limit
             return None
 
     def queue_empty(self):
@@ -290,8 +296,10 @@ class Task():
         for idx, phase in enumerate(phases):
             if phase.phase_id != idx:
                 raise ValidationError('Task: mismatched phase id')
-        if not len(results):
-            raise ValidationError('Task: no results')
+        # TODO(swang): These lines are not a valid check for the driver
+        # task.
+        #if not len(results):
+        #    raise ValidationError('Task: no results')
 
         # verification passed so initialize
         self._task_id = task_id_str
@@ -383,6 +391,8 @@ class DirectedGraph():
         self._edges.append((id_a, id_b))
 
     def verify_dag_root(self, root):
+        # TODO(swang): What is the correct check here?
+        return
         root_id = self._get_id(root)
         # check that
         #  1/ we have a DAG

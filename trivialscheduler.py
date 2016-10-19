@@ -163,12 +163,10 @@ class TrivialScheduler(BaseScheduler):
         #super(TrivialScheduler).__init__(time_source, scheduler_db)
 
     def _select_node(self, task_id):
-        (best_node_id, _) = next(
-            ifilter(
-                lambda (node_id,node_status): node_status.num_workers_executing < node_status.num_workers,
-                self._state.nodes.items())
-            , None)
-        return best_node_id
+        for node_id, node_status in self._state.nodes.items():
+            if node_status.num_workers_executing < node_status.num_workers:
+                return node_id
+        return None
 
 class LocationAwareScheduler(BaseScheduler):
 

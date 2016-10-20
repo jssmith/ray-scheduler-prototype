@@ -144,7 +144,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             if isinstance(nextUpdate, RegisterNodeUpdate):
                 yield nextUpdate
             nextUpdate = self._ts.advance(time_limit)
-        if no_results and self._phases_pending == 0 and self._ts.queue_empty():
+        if self._phases_pending == 0 and self._ts.queue_empty():
             yield ShutdownUpdate()
 
     def schedule(self, worker_id, task_id):
@@ -186,7 +186,7 @@ class SystemTime():
             (self._t, data) = heapq.heappop(self._scheduled)
             return data
         else:
-            self._t += time_limit
+            self._t = time_limit
             return None
 
     def queue_empty(self):

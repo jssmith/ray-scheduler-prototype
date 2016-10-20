@@ -74,12 +74,13 @@ class TestReplayState(unittest.TestCase):
         transfer_time_cost = 0
         scheduler_db = ReplaySchedulerDatabase(system_time, computation, num_nodes, num_workers_per_node, transfer_time_cost)
 
-        self.assertEquals([RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node)], list(scheduler_db.get_updates(100)))
-        self.assertEquals([ShutdownUpdate()], list(scheduler_db.get_updates(100)))
-        self.assertEquals(0, system_time.get_time())
+        updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node), ShutdownUpdate()]
+        self.assertEquals(updates_expected, list(scheduler_db.get_updates(10)))
+        self.assertEquals(10, system_time.get_time())
 
         # check for another shutdown
-        self.assertEquals([ShutdownUpdate()], list(scheduler_db.get_updates(100)))
+        self.assertEquals([ShutdownUpdate()], list(scheduler_db.get_updates(10)))
+        self.assertEquals(20, system_time.get_time())
 
 
     def test_one_task(self):
@@ -93,19 +94,50 @@ class TestReplayState(unittest.TestCase):
         scheduler_db = ReplaySchedulerDatabase(system_time, computation, num_nodes, num_workers_per_node, transfer_time_cost)
 
         updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node), SubmitTaskUpdate(task = task_0, submitting_node_id = 0)]
-        self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(100)))
+        self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(10)))
+        self.assertEquals(10, system_time.get_time())
 
-        self.assertEquals([], list(scheduler_db.get_updates(100)))
+        self.assertEquals([], list(scheduler_db.get_updates(10)))
+        self.assertEquals(20, system_time.get_time())
 
         scheduler_db.schedule(0, task_0.id())
 
-        updates_expected = [FinishTaskUpdate(task_id = task_0.id())]
-        self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(100)))
-
-        self.assertEquals([ShutdownUpdate()], list(scheduler_db.get_updates(100)))
+        updates_expected = [FinishTaskUpdate(task_id = task_0.id()), ShutdownUpdate()]
+        self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(10)))
+        self.assertEquals(30, system_time.get_time())
 
         # check we get shutdown repeatedly
-        self.assertEquals([ShutdownUpdate()], list(scheduler_db.get_updates(100)))
+        self.assertEquals([ShutdownUpdate()], list(scheduler_db.get_updates(10)))
+        self.assertEquals(40, system_time.get_time())
+
+    def test_long_task(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], schedules = [], duration = 1000.0)
+        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100)])
+        computation = ComputationDescription(root_task = 1, tasks = [task_0])
+        system_time = SystemTime()
+        num_nodes = 1
+        num_workers_per_node = 1
+        transfer_time_cost = 0
+        scheduler_db = ReplaySchedulerDatabase(system_time, computation, num_nodes, num_workers_per_node, transfer_time_cost)
+
+        updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node), SubmitTaskUpdate(task = task_0, submitting_node_id = 0)]
+        self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(100)))
+        self.assertEquals(100, system_time.get_time())
+
+        self.assertEquals([], list(scheduler_db.get_updates(100)))
+        self.assertEquals(200, system_time.get_time())
+
+        scheduler_db.schedule(0, task_0.id())
+
+        for n in range(2, 11):
+            self.assertEquals([], list(scheduler_db.get_updates(100)))
+            self.assertEquals((n + 1) * 100, system_time.get_time())
+
+        self.assertEquals(1100, system_time.get_time())
+        updates_expected = [FinishTaskUpdate(task_id = task_0.id()), ShutdownUpdate()]
+        self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(100)))
+        self.assertEquals(1200, system_time.get_time())
+
 
     def test_chained_tasks(self):
         phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], schedules = [TaskSubmit(task_id = 2,time_offset = 0.5)], duration = 1.0)
@@ -123,21 +155,25 @@ class TestReplayState(unittest.TestCase):
 
         updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node), SubmitTaskUpdate(task = task_0, submitting_node_id = 0)]
         self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(100)))
+        self.assertEquals(100, system_time.get_time())
 
         self.assertEquals([], list(scheduler_db.get_updates(100)))
+        self.assertEquals(200, system_time.get_time())
 
         scheduler_db.schedule(0, task_0.id())
 
         updates_expected = [FinishTaskUpdate(task_id = task_0.id()), SubmitTaskUpdate(task_1, 0)]
         self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(100)))
+        self.assertEquals(300, system_time.get_time())
 
         self.assertEquals([], list(scheduler_db.get_updates(100)))
+        self.assertEquals(400, system_time.get_time())
+
         scheduler_db.schedule(0, task_1.id())
 
-        updates_expected = [FinishTaskUpdate(task_id = task_1.id())]
+        updates_expected = [FinishTaskUpdate(task_id = task_1.id()), ShutdownUpdate()]
         self.assertItemsEqual(updates_expected, list(scheduler_db.get_updates(100)))
-
-        self.assertEquals([ShutdownUpdate()], list(scheduler_db.get_updates(100)))
+        self.assertEquals(500, system_time.get_time())
 
 
 if __name__ == '__main__':

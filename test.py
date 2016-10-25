@@ -47,10 +47,10 @@ class TestComputationObjects(unittest.TestCase):
 
 class TestSchedulerObjects(unittest.TestCase):
     def test_equality(self):
-        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], schedules = [], duration = 1.0)
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
         task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100)])
 
-        phase_1_0 = TaskPhase(phase_id = 0, depends_on = [], schedules = [], duration = 1.0)
+        phase_1_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
         task_1 = Task(task_id = 2, phases = [phase_1_0], results = [TaskResult(object_id = 2, size = 100)])
 
         self.assertEquals(SubmitTaskUpdate(task_0, 2), SubmitTaskUpdate(task_0, 2))
@@ -84,7 +84,7 @@ class TestReplayState(unittest.TestCase):
 
 
     def test_one_task(self):
-        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], schedules = [], duration = 1.0)
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
         task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100)])
         computation = ComputationDescription(root_task = 1, tasks = [task_0])
         system_time = SystemTime()
@@ -111,7 +111,7 @@ class TestReplayState(unittest.TestCase):
         self.assertEquals(40, system_time.get_time())
 
     def test_long_task(self):
-        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], schedules = [], duration = 1000.0)
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1000.0)
         task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100)])
         computation = ComputationDescription(root_task = 1, tasks = [task_0])
         system_time = SystemTime()
@@ -140,10 +140,10 @@ class TestReplayState(unittest.TestCase):
 
 
     def test_chained_tasks(self):
-        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], schedules = [TaskSubmit(task_id = 2,time_offset = 0.5)], duration = 1.0)
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [TaskSubmit(task_id = 2,time_offset = 0.5)], duration = 1.0)
         task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 234, size = 100)])
 
-        phase_1_0 = TaskPhase(phase_id = 0, depends_on = [234], schedules = [], duration = 1.0)
+        phase_1_0 = TaskPhase(phase_id = 0, depends_on = [234], submits = [], duration = 1.0)
         task_1 = Task(task_id = 2, phases = [phase_1_0], results = [TaskResult(object_id = 2, size = 100)])
 
         computation = ComputationDescription(root_task = 1, tasks = [task_0, task_1])

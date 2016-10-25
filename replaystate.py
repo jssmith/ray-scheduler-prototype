@@ -77,7 +77,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
     def _internal_scheduler_schedule(self, task_id, phase_id, worker_id):
         # TODO should probably always call this, even for phase 0
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
-        depends_on = task_phase.get_depends_on()
+        depends_on = task_phase.depends_on
         needs = []
         for d_object_id in depends_on:
             if not d_object_id in self._finished_objects.keys():
@@ -115,11 +115,11 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
         self._executing_tasks[task_id] = node_id
         data_transfer_time = 0
-        for d_object_id in self._computation.get_task(task_id).get_phase(phase_id).get_depends_on():
+        for d_object_id in self._computation.get_task(task_id).get_phase(phase_id).depends_on:
             dep_obj = self._finished_objects[d_object_id]
             if dep_obj.node_id != node_id:
                 data_transfer_time += dep_obj.size * self._data_transfer_time_cost
-        for schedule_task in task_phase.get_schedules():
+        for schedule_task in task_phase.submits:
             self._ts.schedule_delayed(data_transfer_time + schedule_task.time_offset, self.ScheduledTask(schedule_task.task_id, 0, node_id))
         self._ts.schedule_delayed(data_transfer_time + task_phase.duration, self.TaskPhaseComplete(task_id, phase_id, node_id))
 
@@ -218,7 +218,7 @@ class ComputationDescription():
         called_tasks = set(root_task_str)
         for task in tasks:
             for phase_id in range(0, task.num_phases()):
-                for task_id in map(lambda x: x.task_id, task.get_phase(phase_id).get_schedules()):
+                for task_id in map(lambda x: x.task_id, task.get_phase(phase_id).submits):
                     if task_id in called_tasks:
                         raise ValidationError('Duplicate call to task {}'.format(task_id))
                     if task_id not in task_ids_set:
@@ -240,7 +240,7 @@ class ComputationDescription():
                 result_objects.add(object_id)
         for task in tasks:
             for phase_id in range(0, task.num_phases()):
-                for object_id in task.get_phase(phase_id).get_depends_on():
+                for object_id in task.get_phase(phase_id).depends_on:
                     if object_id not in result_objects:
                         raise ValidationError('Dependency on missing object id {}'.format(object_id))
 
@@ -256,12 +256,12 @@ class ComputationDescription():
                 if prev_phase:
                     #print "EDGE: previous phase edge"
                     dg.add_edge(prev_phase, phase)
-                for object_id in phase.get_depends_on():
+                for object_id in phase.depends_on:
                     #print "EDGE: phase dependency edge"
                     dg.add_edge(object_id, phase)
-                for schedules in phase.get_schedules():
+                for submits in phase.submits:
                     #print "EDGE: phase schedules edge"
-                    dg.add_edge(phase, tasks_map[schedules.task_id].get_phase(0))
+                    dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
                     # TODO object id produced in scheduling
                 prev_phase = phase
             for task_result in task.get_results():
@@ -310,7 +310,7 @@ class Task():
         return self._task_id
 
     def get_depends_on(self):
-        return self._phases[0].get_depends_on()
+        return self._phases[0].depends_on
 
     def get_phase(self, phase_id):
         return self._phases[phase_id]
@@ -323,22 +323,16 @@ class Task():
 
 
 class TaskPhase():
-    def __init__(self, phase_id, depends_on, schedules, duration):
-        for s in schedules:
+    def __init__(self, phase_id, depends_on, submits, duration):
+        for s in submits:
             if s.time_offset > duration:
-                raise ValidationError('TaskPhase: schedules beyond phase duration')
+                raise ValidationError('TaskPhase: submits beyond phase duration')
 
         # verification passed so initialize
         self.phase_id = phase_id
-        self._depends_on = map(lambda x: str(x), depends_on)
-        self._schedules = schedules
+        self.depends_on = map(lambda x: str(x), depends_on)
+        self.submits = submits
         self.duration = duration
-
-    def get_depends_on(self):
-        return self._depends_on
-
-    def get_schedules(self):
-        return self._schedules
 
 
 class TaskResult():
@@ -432,7 +426,7 @@ def computation_decoder(dict):
     if keys == frozenset([u'timeOffset', 'taskId']):
         return TaskSubmit(dict[u'taskId'], dict[u'timeOffset'])
     if keys == frozenset([u'duration', u'phaseId', u'submits', u'dependsOn']):
-        return TaskPhase(dict[u'phaseId'],dict[u'dependsOn'],dict[u'submits'],dict[u'duration'])
+        return TaskPhase(dict[u'phaseId'], dict[u'dependsOn'], dict[u'submits'], dict[u'duration'])
     if keys == frozenset([u'phases', u'results', u'taskId']):
         return Task(dict[u'taskId'], dict[u'phases'], dict[u'results'])
     if keys == frozenset([u'tasks', u'rootTask']):

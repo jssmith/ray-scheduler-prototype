@@ -81,22 +81,6 @@ class RemoveNodeUpdate():
         return not self.__eq__(other)
 
 
-class ShutdownUpdate():
-    def __init__(self):
-        return
-
-    def __str__(self):
-        return 'Shutdown()'
-
-    def __eq__(self, other):
-        if isinstance(other, self.__class__):
-            return True
-        else:
-            return False
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
 class AbstractSchedulerDatabase():
     __metaclass__ = abc.ABCMeta
 
@@ -144,7 +128,7 @@ class AbstractSchedulerDatabase():
         return
 
     @abc.abstractmethod
-    def get_updates(self, timeout_s):
+    def get_updates(self, update_handler):
         """May be called by a driver or a worker program, either
            directly or by proxy through the local scheduler.
 

@@ -32,9 +32,10 @@ def run_replay(args):
     f.close()
 
     system_time = replaystate.SystemTime()
-    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, computation, num_nodes, num_workers_per_node, transfer_time_cost)
+    event_loop = replaystate.EventLoop(system_time)
+    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, computation, num_nodes, num_workers_per_node, transfer_time_cost)
     scheduler = schedulers[scheduler_str](system_time, scheduler_db)
-    scheduler.run()
+    event_loop.run()
 
 if __name__ == '__main__':
     run_replay(sys.argv)

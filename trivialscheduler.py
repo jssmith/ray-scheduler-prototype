@@ -61,18 +61,6 @@ class SchedulerState():
             self._finish_task(update.get_task_id())
         elif isinstance(update, RegisterNodeUpdate):
             self._register_node(update.node_id, update.num_workers)
-        elif isinstance(update, ShutdownUpdate):
-            # TODO - not sure whether extra logic in shutdown
-            #        is generally needed, but useful in debugging
-            #        nonetheless.
-            if not self.runnable_tasks and not self.pending_tasks and not self.executing_tasks:
-                self.is_shutdown = True
-            else:
-                # This isn't really important but useful for debugging shutdown
-                print 'pending: {}'.format(str(self.pending_tasks))
-                print 'runnable: {}'.format(str(self.runnable_tasks))
-                print 'executing: {}'.format(str(self.executing_tasks))
-                print 'nodes: {}'.format(','.join(map(lambda x: str(x), self._state.nodes.values())))
         else:
             print 'Unknown update ' + update.__class__.__name__
             sys.exit(1)
@@ -121,13 +109,11 @@ class SchedulerState():
 
 class BaseScheduler():
 
-    def __init__(self, time_source, scheduler_db):
-        self._ts = time_source
+    def __init__(self, event_loop, scheduler_db):
+        self._event_loop = event_loop
         self._db = scheduler_db
         self._state = SchedulerState()
-
-#    def _schedule_locally(self, task, submitting_node_id):
-#        return False
+        scheduler_db.get_updates(lambda update: self._handle_update(update))
 
     def _execute_task(self, node_id, task_id):
         self._state.set_executing(task_id, node_id)
@@ -148,12 +134,10 @@ class BaseScheduler():
     def _select_node(self, task_id):
         raise NotImplementedError()
 
-    def run(self):
-        while not self._state.is_shutdown:
-            for update in self._db.get_updates(10):
-                self._state.update(update, self._ts.get_time())
-                # TODO ability to process tasks periodically
-                self._process_tasks()
+    def _handle_update(self, update):
+        self._state.update(update, self._event_loop.get_time())
+        # TODO ability to process tasks periodically
+        self._process_tasks()
 
 
 class TrivialScheduler(BaseScheduler):

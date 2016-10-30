@@ -32,10 +32,18 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self.node_id = node_id
             self.size = size
 
-    def __init__(self, time_source, computation, num_nodes, num_workers_per_node, data_transfer_time_cost):
+    class HandlerContext():
+        def __init__(self, replay_scheduler_database, update):
+            self.replay_scheduler_database = replay_scheduler_database
+            self.update = update
+
+    def __init__(self, time_source, event_loop, computation, num_nodes, num_workers_per_node, data_transfer_time_cost):
         self._ts = time_source
+        self._event_loop = event_loop
         self._computation = computation
         self._data_transfer_time_cost = data_transfer_time_cost
+
+        self._update_handlers = []
 
         self._finished_objects = {}
         self._executing_tasks = {}
@@ -47,7 +55,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
 
         # schedule worker registration
         for i in range(0, num_nodes):
-            self._ts.schedule_immediate(RegisterNodeUpdate(i, num_workers_per_node))
+            self._ts.schedule_immediate(lambda i=i: self._handle_update(RegisterNodeUpdate(i, num_workers_per_node)))
 
         # count total number of phases
         self._phases_pending = computation.get_total_num_phases()
@@ -55,7 +63,10 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         # schedule root task
         root_task = computation.get_root_task()
         if root_task is not None:
-            self._ts.schedule_immediate(self.ScheduledTask(root_task, 0, self._driver_node))
+            self._ts.schedule_immediate(lambda: self._handle_update(self.ScheduledTask(root_task, 0, self._driver_node)))
+
+    def _context(self, update):
+        return ReplaySchedulerDatabase.HandlerContext(self, update)
 
     def submit(self, task):
         print 'Not implemented: submit'
@@ -120,32 +131,30 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             if dep_obj.node_id != node_id:
                 data_transfer_time += dep_obj.size * self._data_transfer_time_cost
         for schedule_task in task_phase.submits:
-            self._ts.schedule_delayed(data_transfer_time + schedule_task.time_offset, self.ScheduledTask(schedule_task.task_id, 0, node_id))
-        self._ts.schedule_delayed(data_transfer_time + task_phase.duration, self.TaskPhaseComplete(task_id, phase_id, node_id))
+            self._ts.schedule_delayed(data_transfer_time + schedule_task.time_offset, lambda tid=schedule_task.task_id: self._handle_update(self.ScheduledTask(tid, 0, node_id)))
+        self._ts.schedule_delayed(data_transfer_time + task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id, node_id)))
 
-    def get_updates(self, timeout_s):
-        # This is the main loop for simulation event processing
-        time_limit = self._ts.get_time() + timeout_s
-        no_results = True
-        nextUpdate = self._ts.advance(time_limit)
-        while nextUpdate is not None:
-            no_results = False
-            if isinstance(nextUpdate, self.ScheduledTask):
-                yield SubmitTaskUpdate(self._computation.get_task(nextUpdate.task_id), nextUpdate.submitting_node_id)
-            if isinstance(nextUpdate, self.TaskPhaseComplete):
-                self._phases_pending -= 1
-                task = self._computation.get_task(nextUpdate.task_id)
-                if nextUpdate.phase_id < task.num_phases() - 1:
-                    self._internal_scheduler_schedule(nextUpdate.task_id, nextUpdate.phase_id + 1, nextUpdate.worker_id)
-                else:
-                    print '{:.6f}: finshed task {} on worker {}'.format(self._ts.get_time(), nextUpdate.task_id, nextUpdate.worker_id)
-                    self._internal_scheduler_finish(nextUpdate.task_id)
-                    yield FinishTaskUpdate(nextUpdate.task_id)
-            if isinstance(nextUpdate, RegisterNodeUpdate):
-                yield nextUpdate
-            nextUpdate = self._ts.advance(time_limit)
-        if self._phases_pending == 0 and self._ts.queue_empty():
-            yield ShutdownUpdate()
+    def get_updates(self, update_handler):
+        self._update_handlers.append(update_handler)
+
+    def _handle_update(self, nextUpdate):
+        if isinstance(nextUpdate, self.ScheduledTask):
+            self._yield_update(SubmitTaskUpdate(self._computation.get_task(nextUpdate.task_id), nextUpdate.submitting_node_id))
+        if isinstance(nextUpdate, self.TaskPhaseComplete):
+            self._phases_pending -= 1
+            task = self._computation.get_task(nextUpdate.task_id)
+            if nextUpdate.phase_id < task.num_phases() - 1:
+                self._internal_scheduler_schedule(nextUpdate.task_id, nextUpdate.phase_id + 1, nextUpdate.worker_id)
+            else:
+                print '{:.6f}: finshed task {} on worker {}'.format(self._ts.get_time(), nextUpdate.task_id, nextUpdate.worker_id)
+                self._internal_scheduler_finish(nextUpdate.task_id)
+                self._yield_update(FinishTaskUpdate(nextUpdate.task_id))
+        if isinstance(nextUpdate, RegisterNodeUpdate):
+            self._yield_update(nextUpdate)
+
+    def _yield_update(self, update):
+        for handler in self._update_handlers:
+            handler(update)
 
     def schedule(self, worker_id, task_id):
         print '{:.6f}: execute task {} on worker {}'.format(self._ts.get_time(), task_id, worker_id)
@@ -169,29 +178,75 @@ class SystemTime():
     def get_time(self):
         return self._t
 
-    def schedule_at(self, t, data):
+    def schedule_at(self, t, fn):
         if self._t > t:
             print 'invalid schedule request'
             sys.exit(1)
-        heapq.heappush(self._scheduled, (t, data))
+        heapq.heappush(self._scheduled, (t, fn))
 
-    def schedule_delayed(self, delta, data):
-        self.schedule_at(self._t + delta, data)
+    def schedule_delayed(self, delta, fn):
+        self.schedule_at(self._t + delta, fn)
 
-    def schedule_immediate(self, data):
-        self.schedule_at(self._t, data)
+    def schedule_immediate(self, fn):
+        self.schedule_at(self._t, fn)
 
-    def advance(self, time_limit):
-        if len(self._scheduled) > 0 and self._scheduled[0][0] <= time_limit:
-            (self._t, data) = heapq.heappop(self._scheduled)
-            return data
-        else:
-            self._t = time_limit
-            return None
+    def advance(self):
+        if len(self._scheduled) > 0:
+            (self._t, scheduled) = heapq.heappop(self._scheduled)
+            scheduled()
+        return len(self._scheduled) > 0
 
     def queue_empty(self):
         return not self._scheduled
 
+class EventLoop():
+    class EventLoopData():
+        def __init__(self, event_loop, timer_id, handler, context):
+            self.timer_id = timer_id
+            self.handler = handler
+            self.context = context
+            self.is_cancelled = False
+
+    def __init__(self, timesource):
+        self._ts = timesource
+        self._timer_id_seq = 1
+        self.is_stopped = True
+        self._timers = {}
+
+    def timer_handler(self, context):
+        if context.timer_id not in self._timers.keys():
+            raise RuntimeError('Invalid timer')
+        del self._timers[context.timer_id]
+        if not context.is_cancelled:
+            context.handler(context.context)
+
+    def add_timer(self, delta, handler, context):
+        timer_id = self._timer_id_seq
+        self._timer_id_seq += 1
+        context = EventLoop.EventLoopData(self, timer_id, handler, context)
+        self._timers[timer_id] = context
+        self._ts.schedule_delayed(delta, lambda: self.timer_handler(context))
+        return timer_id
+
+    def remove_timer(self, timer_id):
+        if timer_id not in self._timers.keys():
+            raise RuntimeError('Timer is not active')
+        self._timers[timer_id].is_cancelled = True
+
+    def run(self):
+        if not self.is_stopped:
+            raise RuntimeError('Event loop already running')
+        self.is_stopped = False
+        while self._ts.advance() and not self.is_stopped:
+            pass
+        self.is_stopped = True
+
+    def run_until(self, delta):
+        self.add_timer(delta, lambda _: self.stop(), None)
+        self.run()
+
+    def stop(self):
+        self.is_stopped = True
 
 
 ################################################################

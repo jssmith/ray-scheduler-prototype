@@ -23,11 +23,11 @@ def parse_json_dir(log_dir):
     return event_logs
 
 # Returns two dependency mappings. The first has key object id, value task uuid
-# that produced it. The second has key task, value list of task uuids that it
+# that produced it. The second has key task, value list of object ids that it
 # depends on.
 def build_dependencies(event_logs):
     object_dependencies = defaultdict(list)
-    args = {}
+    task_dependencies = {}
     for event_log in event_logs:
         for event in event_log:
             if event['event'] != 'SCHEDULE':
@@ -35,11 +35,9 @@ def build_dependencies(event_logs):
             object_ids = event['returns']
             for object_id in object_ids:
                 object_dependencies[object_id] = event['taskId']
-            args[event['taskId']] = event['dependsOn']
+            task_dependencies[event['taskId']] = event['dependsOn']
     dependencies = {}
-    for task in args:
-        dependencies[task] = [object_dependencies[object_id] for object_id in args[task]]
-    return object_dependencies, dependencies
+    return object_dependencies, task_dependencies
 
 
 def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):

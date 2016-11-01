@@ -1,0 +1,257 @@
+{
+  "rootTask": 1,
+  "tasks": [
+    {
+      "taskId": 1,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "submits": [
+            {
+              "taskId": 2,
+              "timeOffset": 0.1
+            },
+            {
+              "taskId": 3,
+              "timeOffset": 0.1
+            },
+			{
+              "taskId": 4,
+              "timeOffset": 0.1
+            },
+			{
+              "taskId": 5,
+              "timeOffset": 0.1
+            },
+			{
+              "taskId": 6,
+              "timeOffset": 0.1
+            },
+			{
+              "taskId": 7,
+              "timeOffset": 0.1
+            },
+			{
+              "taskId": 8,
+              "timeOffset": 0.1
+            },
+			{
+              "taskId": 9,
+              "timeOffset": 0.1
+            },
+			{
+              "taskId": 10,
+              "timeOffset": 0.1
+            },
+			{
+              "taskId": 11,
+              "timeOffset": 0.1
+            }
+          ],
+          "duration": 0.1
+        },
+        {
+          "phaseId": 1,
+          "dependsOn": [
+            10, 11
+          ],
+          "submits": [],
+          "duration": 0.2
+        }
+      ],
+      "results": [
+        {
+          "objectId": 1,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 2,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "submits": [],
+          "duration": 1.5
+        }
+      ],
+      "results": [
+        {
+          "objectId": 2,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 3,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "submits": [],
+          "duration": 10.2
+        }
+      ],
+      "results": [
+        {
+          "objectId": 3,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 4,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [
+            2
+          ],
+          "submits": [],
+          "duration": 7.6
+        }
+      ],
+      "results": [
+        {
+          "objectId": 4,
+          "size": 100
+        }
+      ]
+    },
+	{
+      "taskId": 5,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [
+            2
+          ],
+          "submits": [],
+          "duration": 6.7
+        }
+      ],
+      "results": [
+        {
+          "objectId": 5,
+          "size": 100
+        }
+      ]
+    },
+	{
+      "taskId": 6,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [
+            2
+          ],
+          "submits": [],
+          "duration": 7.0
+        }
+      ],
+      "results": [
+        {
+          "objectId": 6,
+          "size": 100
+        }
+      ]
+    },
+	{
+      "taskId": 7,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [
+            3
+          ],
+          "submits": [],
+          "duration": 0.2
+        }
+      ],
+      "results": [
+        {
+          "objectId": 7,
+          "size": 100
+        }
+      ]
+    },
+	{
+      "taskId": 8,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [
+            3
+          ],
+          "submits": [],
+          "duration": 0.2
+        }
+      ],
+      "results": [
+        {
+          "objectId": 8,
+          "size": 100
+        }
+      ]
+    },
+	{
+      "taskId": 9,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [
+            3
+          ],
+          "submits": [],
+          "duration": 0.7
+        }
+      ],
+      "results": [
+        {
+          "objectId": 9,
+          "size": 100
+        }
+      ]
+    },
+	{
+      "taskId": 10,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [
+            4,5,6
+          ],
+          "submits": [],
+          "duration": 1.1
+        }
+      ],
+      "results": [
+        {
+          "objectId": 10,
+          "size": 100
+        }
+      ]
+    },
+	{
+      "taskId": 11,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [
+            7,8,9
+          ],
+          "submits": [],
+          "duration": 0.5
+        }
+      ],
+      "results": [
+        {
+          "objectId": 11,
+          "size": 100
+        }
+      ]
+    }
+  ]
+}

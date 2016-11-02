@@ -28,7 +28,8 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
                                                               self.worker_id))
 
     class ObjectDescription():
-        def __init__(self, node_id, size):
+        def __init__(self, object_id, node_id, size):
+            self.object_id = object_id
             self.node_id = node_id
             self.size = size
 
@@ -108,7 +109,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         del self._executing_tasks[task_id]
         for result in self._computation.get_task(task_id).get_results():
             object_id = result.object_id
-            self._finished_objects[object_id] = self.ObjectDescription(node_id, result.size)
+            self._finished_objects[object_id] = self.ObjectDescription(object_id, node_id, result.size)
             if object_id in self._awaiting_completion.keys():
                 p_task_ids = self._awaiting_completion[object_id]
                 del self._awaiting_completion[object_id]
@@ -130,6 +131,10 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             dep_obj = self._finished_objects[d_object_id]
             if dep_obj.node_id != node_id:
                 data_transfer_time += dep_obj.size * self._data_transfer_time_cost
+                object_ready_update = (lambda:
+                        self._handle_update(ObjectReadyUpdate(dep_obj,
+                                                              node_id)))
+                self._ts.schedule_delayed(data_transfer_time, object_ready_update)
         for schedule_task in task_phase.submits:
             self._ts.schedule_delayed(data_transfer_time + schedule_task.time_offset, lambda tid=schedule_task.task_id: self._handle_update(self.ScheduledTask(tid, 0, node_id)))
         self._ts.schedule_delayed(data_transfer_time + task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id, node_id)))
@@ -150,6 +155,8 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
                 self._internal_scheduler_finish(nextUpdate.task_id)
                 self._yield_update(FinishTaskUpdate(nextUpdate.task_id))
         if isinstance(nextUpdate, RegisterNodeUpdate):
+            self._yield_update(nextUpdate)
+        if isinstance(nextUpdate, ObjectReadyUpdate):
             self._yield_update(nextUpdate)
 
     def _yield_update(self, update):

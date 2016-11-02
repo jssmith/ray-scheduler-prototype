@@ -1,3 +1,4 @@
+from collections import defaultdict
 import sys
 
 from schedulerbase import *
@@ -21,7 +22,7 @@ class SchedulerState():
         # TODOs
         #  - this should be a list of node ids
         #  - add the sizes of object ids
-        self.finished_objects = {}
+        self.finished_objects = defaultdict(list)
 
         # Map from task id to Task object
         self.tasks = {}
@@ -61,6 +62,9 @@ class SchedulerState():
             self._finish_task(update.get_task_id())
         elif isinstance(update, RegisterNodeUpdate):
             self._register_node(update.node_id, update.num_workers)
+        elif isinstance(update, ObjectReadyUpdate):
+            self._object_ready(update.object_description.object_id,
+                               update.submitting_node_id)
         else:
             print 'Unknown update ' + update.__class__.__name__
             sys.exit(1)
@@ -94,18 +98,27 @@ class SchedulerState():
         del self.executing_tasks[task_id]
         for result in self.tasks[task_id].get_results():
             object_id = result.object_id
-            # TODO - should be appending to list of object locations
-            self.finished_objects[object_id] = node_id
-            if object_id in self._awaiting_completion.keys():
-                pending_task_ids = self._awaiting_completion[object_id]
-                del self._awaiting_completion[object_id]
-                for pending_task_id in pending_task_ids:
-                    needs = self._pending_needs[pending_task_id]
-                    needs.remove(object_id)
-                    if not needs:
-                        del self._pending_needs[pending_task_id]
-                        self.pending_tasks.remove(pending_task_id)
-                        self.runnable_tasks.append(pending_task_id)
+            self._object_ready(object_id, node_id)
+
+    def _object_ready(self, object_id, node_id):
+        self.finished_objects[object_id].append(node_id)
+        if object_id in self._awaiting_completion.keys():
+            pending_task_ids = self._awaiting_completion[object_id]
+            del self._awaiting_completion[object_id]
+            for pending_task_id in pending_task_ids:
+                needs = self._pending_needs[pending_task_id]
+                needs.remove(object_id)
+                if not needs:
+                    del self._pending_needs[pending_task_id]
+                    self.pending_tasks.remove(pending_task_id)
+                    self.runnable_tasks.append(pending_task_id)
+        #print "object", object_id, "is on", self.finished_objects[object_id]
+
+    def object_ready(self, object_id, node_id):
+        """
+        Whether the given object ID is ready on the given node.
+        """
+        return node_id in self.finished_objects[object_id]
 
 class BaseScheduler():
 
@@ -167,7 +180,7 @@ class LocationAwareScheduler(BaseScheduler):
             if node_status.num_workers_executing < node_status.num_workers:
                 cost = 0
                 for depends_on in task_deps:
-                    if self._state.finished_objects[depends_on] != node_id:
+                    if not self._state.object_ready(depends_on, node_id):
                         cost += 1
                 if cost < best_cost:
                     best_cost = cost

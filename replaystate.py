@@ -2,6 +2,7 @@ import sys
 import heapq
 import itertools
 
+from collections import defaultdict
 from schedulerbase import *
 
 
@@ -10,28 +11,6 @@ from schedulerbase import *
 ################################################################
 
 class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
-    class ScheduledTask():
-        def __init__(self, task_id, phase_id, submitting_node_id):
-            self.task_id = task_id
-            self.phase_id = phase_id
-            self.submitting_node_id = submitting_node_id
-
-    class TaskPhaseComplete():
-        def __init__(self, task_id, phase_id, worker_id):
-            self.task_id = task_id
-            self.phase_id = phase_id
-            self.worker_id = worker_id
-
-        def __str__(self):
-            return ('TaskPhaseComplete({0}, {1}, {2})'.format(self.task_id,
-                                                              self.phase_id,
-                                                              self.worker_id))
-
-    class ObjectDescription():
-        def __init__(self, object_id, node_id, size):
-            self.object_id = object_id
-            self.node_id = node_id
-            self.size = size
 
     class HandlerContext():
         def __init__(self, replay_scheduler_database, update):
@@ -45,7 +24,8 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         self._computation = computation
         self._data_transfer_time_cost = data_transfer_time_cost
 
-        self._update_handlers = []
+        self._global_scheduler_update_handlers = []
+        self._local_scheduler_update_handlers = defaultdict(list)
 
         self._finished_objects = {}
         self._executing_tasks = {}
@@ -53,124 +33,258 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         self._pending_info = {}
         self._awaiting_completion = {}
 
-        self._driver_node = 0
-
         # schedule worker registration
         for i in range(0, num_nodes):
             self._ts.schedule_immediate(lambda i=i: self._handle_update(RegisterNodeUpdate(i, num_workers_per_node)))
 
-        # count total number of phases
-        self._phases_pending = computation.get_total_num_phases()
-
-        # schedule root task
-        root_task = computation.get_root_task()
-        if root_task is not None:
-            self._ts.schedule_immediate(lambda: self._handle_update(self.ScheduledTask(root_task, 0, self._driver_node)))
-
     def _context(self, update):
         return ReplaySchedulerDatabase.HandlerContext(self, update)
 
-    def submit(self, task):
-        print 'Not implemented: submit'
-        sys.exit(1)
+    def submit(self, task, submitting_node_id, is_scheduled_locally):
+        self._yield_global_scheduler_update(ForwardTaskUpdate(task, submitting_node_id, is_scheduled_locally))
 
     def finished(self, task_id):
-        print 'Not implemented: finished'
-        sys.exit(1)
+        #if task_id != self.root_task_id:
+        self._yield_global_scheduler_update(FinishTaskUpdate(task_id))
+
+    def object_ready(self, object_description, submitting_node_id):
+        self._yield_global_scheduler_update(ObjectReadyUpdate(object_description, submitting_node_id))
 
     def register_node(self, node_id, num_workers):
         print 'Not implemented: register_node'
         sys.exit(1)
 
-
     def remove_node(self, node_id):
         print 'Not implemented: remove_node'
         sys.exit(1)
 
-    def _internal_scheduler_schedule(self, task_id, phase_id, worker_id):
-        # TODO should probably always call this, even for phase 0
-        task_phase = self._computation.get_task(task_id).get_phase(phase_id)
-        depends_on = task_phase.depends_on
-        needs = []
-        for d_object_id in depends_on:
-            if not d_object_id in self._finished_objects.keys():
-                needs.append(d_object_id)
-                if d_object_id in self._awaiting_completion:
-                    self._awaiting_completion[d_object_id].append(task_id)
-                else:
-                    self._awaiting_completion[d_object_id] = [task_id]
-        if not needs:
-            self._execute_immediate(task_id, phase_id, worker_id)
+    def get_global_scheduler_updates(self, update_handler):
+        self._global_scheduler_update_handlers.append(update_handler)
+
+    def get_local_scheduler_updates(self, node_id, update_handler):
+        self._local_scheduler_update_handlers[str(node_id)].append(update_handler)
+
+    def _handle_update(self, nextUpdate):
+        if isinstance(nextUpdate, RegisterNodeUpdate):
+            self._yield_global_scheduler_update(nextUpdate)
+        elif isinstance(nextUpdate, ObjectReadyUpdate):
+            self._yield_global_scheduler_update(nextUpdate)
         else:
-            self._pending_needs[task_id] = needs
-            self._pending_info[task_id] = (phase_id, worker_id)
+            raise NotImplementedError('Unable to handle update of type {}'.format(type(nextUpdate)))
 
-    def _internal_scheduler_finish(self, task_id):
-        node_id = self._executing_tasks[task_id]
-        del self._executing_tasks[task_id]
-        for result in self._computation.get_task(task_id).get_results():
-            object_id = result.object_id
-            self._finished_objects[object_id] = self.ObjectDescription(object_id, node_id, result.size)
-            if object_id in self._awaiting_completion.keys():
-                p_task_ids = self._awaiting_completion[object_id]
-                del self._awaiting_completion[object_id]
-                for p_task_id in p_task_ids:
-                    needs = self._pending_needs[p_task_id]
-                    needs.remove(object_id)
-                    if not needs:
-                        del self._pending_needs[p_task_id]
-                        (phase_id, worker_id) = self._pending_info[p_task_id]
-                        del self._pending_info[p_task_id]
-                        self._execute_immediate(p_task_id, phase_id, worker_id)
+    def _yield_global_scheduler_update(self, update):
+        for handler in self._global_scheduler_update_handlers:
+            handler(update)
 
-    def _execute_immediate(self, task_id, phase_id, node_id):
-        # TODO: enforce limit on workers per node, valid node_id
-        task_phase = self._computation.get_task(task_id).get_phase(phase_id)
-        self._executing_tasks[task_id] = node_id
-        data_transfer_time = 0
-        for d_object_id in self._computation.get_task(task_id).get_phase(phase_id).depends_on:
-            dep_obj = self._finished_objects[d_object_id]
-            if dep_obj.node_id != node_id:
-                data_transfer_time += dep_obj.size * self._data_transfer_time_cost
-                object_ready_update = (lambda:
-                        self._handle_update(ObjectReadyUpdate(dep_obj,
-                                                              node_id)))
-                self._ts.schedule_delayed(data_transfer_time, object_ready_update)
-        for schedule_task in task_phase.submits:
-            self._ts.schedule_delayed(data_transfer_time + schedule_task.time_offset, lambda tid=schedule_task.task_id: self._handle_update(self.ScheduledTask(tid, 0, node_id)))
-        self._ts.schedule_delayed(data_transfer_time + task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id, node_id)))
+    def _yield_local_scheduler_update(self, update):
+#        print "yield locally targeting {}".format(update.node_id)
+#        print "lsh" + str(self._local_scheduler_update_handlers)
+        for handler in self._local_scheduler_update_handlers[str(update.node_id)]:
+#            print "SDB sending update {} to node {}".format(update, update.node_id)
+            self._ts.schedule_immediate(lambda: handler(update))
+
+    def schedule(self, node_id, task_id):
+#        print("State DB received request to schedule task {} on node {}".format(task_id, node_id))
+        # TODO: add delay in propagating to local scheduler
+        self._yield_local_scheduler_update(ScheduleTaskUpdate(self._computation.get_task(task_id), node_id))
+
+    def schedule_root(self, node_id):
+        # schedule root task
+        root_task = self._computation.get_root_task()
+        if root_task is not None:
+            self.root_task_id = root_task.id()
+            self._ts.schedule_immediate(lambda: self.schedule(node_id, self.root_task_id))
+            self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True))
+
+
+class ObjectStoreRuntime():
+    def __init__(self, system_time, data_transfer_time_cost):
+        self._system_time = system_time
+        self._objects_locations = defaultdict(set)
+        self._object_sizes = {}
+        self._update_handlers = defaultdict(list)
+        self._data_transfer_time_cost = data_transfer_time_cost
+        self._awaiting_completion = defaultdict(list)
+
+    def add_object(self, object_id, node_id, object_size):
+        self._objects_locations[object_id].add(node_id)
+        self._object_sizes[object_id] = object_size
+        self._yield_object_ready_update(object_id, node_id, object_size)
+        if object_id in self._awaiting_completion.keys():
+            for (d_node_id, on_done) in self._awaiting_completion[object_id]:
+                if node_id == d_node_id:
+                    on_done()
+                else:
+                    self._copy_object(object_id, d_node_id, node_id, on_done) 
+            del self._awaiting_completion[object_id]
+
+    def get_locations(self, object_id):
+        return self._objects_locations[object_id]
+
+    def get_updates(self, node_id, update_handler):
+        self._update_handlers[str(node_id)].append(update_handler)
+
+    def is_local(self, object_id, node_id):
+        return node_id in self._objects_locations[object_id]
+
+    def _yield_object_ready_update(self, object_id, node_id, object_size):
+        self._yield_update(node_id, ObjectReadyUpdate(ObjectDescription(object_id, node_id, object_size), node_id))
+
+    def _yield_update(self, node_id, update):
+        for update_handler in self._update_handlers[node_id]:
+            update_handler(update)
+
+    def require_object(self, object_id, node_id, on_done):
+        object_locations = self._objects_locations[object_id]
+        if node_id in object_locations:
+            # TODO - we aren't firing the ObjectReadyUpdate in this scenario. Should we be doing so?
+#            print "require has locally"
+            on_done()
+        else:
+#            print "require doesn't have locally"
+            if not object_locations:
+                self._awaiting_completion[object_id].append((node_id, on_done))
+            else:
+                # TODO better way to choose an element from a set than list(set)[0]
+                self._copy_object(object_id, node_id, list(object_locations)[0], on_done)
+
+    def _copy_object(self, object_id, dst_node_id, src_node_id, on_done):
+        if dst_node_id == src_node_id:
+            on_done()
+        elif src_node_id in self._objects_locations[object_id]:
+            print "moving object to {} from {}".format(dst_node_id, src_node_id)
+            data_transfer_time = self._object_sizes[object_id] * self._data_transfer_time_cost
+            self._system_time.schedule_delayed(data_transfer_time, lambda: self._object_moved(object_id, dst_node_id, on_done))
+        else:
+            raise RuntimeError('Unexpected failure to copy object {} to {} from {}'.format(object_id, dst_node_id, src_node_id))
+
+    def _object_moved(self, object_id, dst_node_id, on_done):
+        self._objects_locations[object_id].add(dst_node_id)
+        self._yield_object_ready_update(object_id, dst_node_id, self._object_sizes[object_id])
+        on_done()
+
+
+class ObjectDescription():
+    def __init__(self, object_id, node_id, size):
+        self.object_id = object_id
+        self.node_id = node_id
+        self.size = size
+
+
+class NodeRuntime():
+    def __init__(self, system_time, object_store, logger, computation, node_id, num_workers):
+        self._system_time = system_time
+        self._object_store = object_store
+        self._logger = logger
+        self._computation = computation
+        self._update_handlers = []
+        self.num_workers = num_workers
+        self.node_id = node_id
+        self.num_workers_executing = 0
+
+        self._queue_seq = 0
+        self._queue = []
+
+        # Just pass through the object store updates
+        self._object_store.get_updates(self.node_id, lambda update: self._yield_update(update))
+
+    def is_local(self, object_id):
+        return self._object_store.is_local(object_id, self.node_id)
+
+    def send_to_dispatcher(self, task, priority):
+        task_id = task.id()
+        if self.num_workers_executing < self.num_workers:
+            self._start_task(task_id)
+        else:
+            heapq.heappush(self._queue, (priority, self._queue_seq, task_id))
+            self._queue_seq += 1
 
     def get_updates(self, update_handler):
         self._update_handlers.append(update_handler)
 
-    def _handle_update(self, nextUpdate):
-        if isinstance(nextUpdate, self.ScheduledTask):
-            self._yield_update(SubmitTaskUpdate(self._computation.get_task(nextUpdate.task_id), nextUpdate.submitting_node_id))
-        if isinstance(nextUpdate, self.TaskPhaseComplete):
-            self._phases_pending -= 1
-            task = self._computation.get_task(nextUpdate.task_id)
-            if nextUpdate.phase_id < task.num_phases() - 1:
-                self._internal_scheduler_schedule(nextUpdate.task_id, nextUpdate.phase_id + 1, nextUpdate.worker_id)
-            else:
-                self._logger.task_finished(nextUpdate.task_id, nextUpdate.worker_id)
-                self._internal_scheduler_finish(nextUpdate.task_id)
-                self._yield_update(FinishTaskUpdate(nextUpdate.task_id))
-        if isinstance(nextUpdate, RegisterNodeUpdate):
-            self._yield_update(nextUpdate)
-        if isinstance(nextUpdate, ObjectReadyUpdate):
-            self._yield_update(nextUpdate)
+    def free_workers(self):
+        return self.num_workers - self.num_workers_executing
+
+    class TaskSubmitted():
+        def __init__(self, submitted_task_id, phase_id):
+            self.submitted_task_id = submitted_task_id
+            self.phase_id = phase_id
+
+    class TaskPhaseComplete():
+        def __init__(self, task_id, phase_id, worker_id):
+            self.task_id = task_id
+            self.phase_id = phase_id
+
+    class Dependencies():
+        def __init__(self, node_runtime, task_id, phase_id):
+            self._node_runtime = node_runtime
+            self._task_id = task_id
+            self._phase_id = phase_id
+
+            self._object_dependencies = set()
+
+        def has_dependencies(self):
+            return bool(self._object_dependencies)
+
+        def add_object_dependency(self, object_id):
+            self._object_dependencies.add(object_id)
+
+        def object_available(self, object_id):
+#            print self._object_dependencies
+#            print 'remove object dependency {} at task id {} phase id {}'.format(object_id, self._task_id, self._phase_id)
+            self._object_dependencies.remove(object_id)
+            if not self._object_dependencies:
+                self._node_runtime._execute_phase_immediate(self._task_id, self._phase_id)
+
+    def _start_task(self, task_id):
+        self.num_workers_executing += 1
+        self._logger.task_started(task_id, self.node_id)
+        self._internal_scheduler_schedule(task_id, 0)
+
+    def _process_tasks(self):
+        while self.num_workers_executing < self.num_workers and self._queue:
+            (_, _, task_id) = heapq.heappop(self._queue)
+            self._start_task(task_id)
 
     def _yield_update(self, update):
-        for handler in self._update_handlers:
-            handler(update)
+        for update_handler in self._update_handlers:
+            update_handler(update)
 
-    def schedule(self, worker_id, task_id):
-        self._logger.task_started(task_id, worker_id)
-        self._execute_immediate(task_id, 0, worker_id)
+    def _execute_phase_immediate(self, task_id, phase_id):
+#        print "execute phase immediate {} {}".format(task_id, phase_id)
+        task_phase = self._computation.get_task(task_id).get_phase(phase_id)
+        for schedule_task in task_phase.submits:
+            self._system_time.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
+        self._system_time.schedule_delayed(task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id, self.node_id)))
 
-    def get_work(self, worker_id, timeout_s):
-        print 'Not implemented: get_work'
-        sys.exit(1)
+    def _internal_scheduler_schedule(self, task_id, phase_id):
+        task_phase = self._computation.get_task(task_id).get_phase(phase_id)
+        depends_on = task_phase.depends_on
+        needs = self.Dependencies(self, task_id, phase_id)
+        for d_object_id in depends_on:
+            if not self._object_store.is_local(d_object_id, self.node_id):
+                needs.add_object_dependency(d_object_id)
+#                print "add requires object {} on node {}".format(d_object_id, self.node_id)
+                self._object_store.require_object(d_object_id, self.node_id, lambda: needs.object_available(d_object_id))
+        if not needs.has_dependencies():
+            self._execute_phase_immediate(task_id, phase_id)
+
+    def _handle_update(self, update):
+        if isinstance(update, self.TaskSubmitted):
+            self._yield_update(SubmitTaskUpdate(self._computation.get_task(update.submitted_task_id)))
+        elif isinstance(update, self.TaskPhaseComplete):
+            task = self._computation.get_task(update.task_id)
+            if update.phase_id < task.num_phases() - 1:
+                self._internal_scheduler_schedule(update.task_id, update.phase_id + 1)
+            else:
+                self._logger.task_finished(update.task_id, self.node_id)
+                for res in task.get_results():
+                    self._object_store.add_object(res. object_id, self.node_id, res.size)
+                self._yield_update(FinishTaskUpdate(update.task_id))
+                self.num_workers_executing -= 1
+                self._process_tasks()
+        else:
+            raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
 
 
@@ -182,6 +296,7 @@ class SystemTime():
     def __init__(self):
         self._t = 0
         self._scheduled = []
+        self._scheduled_seq = 0
 
     def get_time(self):
         return self._t
@@ -190,7 +305,8 @@ class SystemTime():
         if self._t > t:
             print 'invalid schedule request'
             sys.exit(1)
-        heapq.heappush(self._scheduled, (t, fn))
+        heapq.heappush(self._scheduled, (t, self._scheduled_seq, fn))
+        self._scheduled_seq += 1
 
     def schedule_delayed(self, delta, fn):
         self.schedule_at(self._t + delta, fn)
@@ -200,7 +316,7 @@ class SystemTime():
 
     def advance(self):
         if len(self._scheduled) > 0:
-            (self._t, scheduled) = heapq.heappop(self._scheduled)
+            (self._t, _, scheduled) = heapq.heappop(self._scheduled)
             scheduled()
         return len(self._scheduled) > 0
 
@@ -337,16 +453,13 @@ class ComputationDescription():
         self._tasks = tasks_map
 
     def get_root_task(self):
-        return self._root_task
+        if self._root_task is None:
+            return None
+        else:
+            return self._tasks[self._root_task]
 
     def get_task(self, task_id):
         return self._tasks[task_id]
-
-    def get_total_num_phases(self):
-        n = 0
-        for task_id, task in self._tasks.items():
-            n += task.num_phases()
-        return n
 
 
 class Task():

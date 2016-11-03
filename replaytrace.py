@@ -13,6 +13,21 @@ schedulers = {
 def usage():
     print 'Usage: test_scheduler num_nodes num_workers_per_node transfer_time_cost scheduler input.json'
 
+
+def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, transfer_time_cost):
+    event_loop = replaystate.EventLoop(system_time)
+    object_store = replaystate.ObjectStoreRuntime(system_time, transfer_time_cost)
+    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, logger, computation, num_nodes, num_workers_per_node, transfer_time_cost)
+    schedulers = scheduler_type(system_time, scheduler_db)
+    global_scheduler = schedulers.get_global_scheduler()
+    local_schedulers = {}
+    for node_id in range(0, num_nodes):
+        local_runtime = replaystate.NodeRuntime(system_time, object_store, logger, computation, node_id, num_workers_per_node)
+        local_schedulers[node_id] = schedulers.get_local_scheduler(local_runtime)
+    scheduler_db.schedule_root(0)
+    event_loop.run()
+
+
 def run_replay(args):
     if len(args) != 6:
         usage()
@@ -33,11 +48,9 @@ def run_replay(args):
     f.close()
 
     system_time = replaystate.SystemTime()
-    event_loop = replaystate.EventLoop(system_time)
     logger = replaystate.PrintingLogger(system_time)
-    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, logger, computation, num_nodes, num_workers_per_node, transfer_time_cost)
-    scheduler = schedulers[scheduler_str](system_time, scheduler_db)
-    event_loop.run()
+    simulate(computation, schedulers[scheduler_str], system_time, logger, num_nodes, num_workers_per_node, transfer_time_cost)
+
 
 if __name__ == '__main__':
     run_replay(sys.argv)

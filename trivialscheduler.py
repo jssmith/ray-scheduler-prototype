@@ -4,7 +4,7 @@ import sys
 from schedulerbase import *
 from itertools import ifilter
 
-class SchedulerState():
+class GlobalSchedulerState():
     def __init__(self):
         # Map from node id to node status
         self.nodes = {}
@@ -54,20 +54,19 @@ class SchedulerState():
         self.executing_tasks[task_id] = node_id
 
     def update(self, update, timestamp):
-        #print 'scheduler update ' + str(update)
-        if isinstance(update, SubmitTaskUpdate):
-            print '{} task {} submitted'.format(timestamp, update.get_task_id())
-            self._add_task(update.get_task(), update.get_submitting_node_id())
+        print '{:.6f}: GlobalSchedulerState update {}'.format(timestamp, str(update))
+        if isinstance(update, ForwardTaskUpdate):
+#            print '{} task {} submitted'.format(timestamp, update.task.id())
+            self._add_task(update.task, update.submitting_node_id, update.is_scheduled_locally)
         elif isinstance(update, FinishTaskUpdate):
-            self._finish_task(update.get_task_id())
+            self._finish_task(update.task_id)
         elif isinstance(update, RegisterNodeUpdate):
             self._register_node(update.node_id, update.num_workers)
         elif isinstance(update, ObjectReadyUpdate):
             self._object_ready(update.object_description.object_id,
                                update.submitting_node_id)
         else:
-            print 'Unknown update ' + update.__class__.__name__
-            sys.exit(1)
+            raise NotImplementedError('Unknown update {}'.format(update.__class__.__name__))
 
     def _register_node(self, node_id, num_workers):
         if node_id in self.nodes.keys():
@@ -75,22 +74,25 @@ class SchedulerState():
             sys.exit(1)
         self.nodes[node_id] = self._NodeStatus(node_id, num_workers)
 
-    def _add_task(self, task, submitting_node_id):
+    def _add_task(self, task, submitting_node_id, is_scheduled_locally):
         task_id = task.id()
         self.tasks[task_id] = task
-        pending_needs = []
-        for d_object_id in task.get_depends_on():
-            if d_object_id not in self.finished_objects.keys():
-                pending_needs.append(d_object_id)
-                if d_object_id in self._awaiting_completion.keys():
-                    self._awaiting_completion[d_object_id].append(task_id)
-                else:
-                    self._awaiting_completion[d_object_id] = [task_id]
-        if len(pending_needs) > 0:
-            self._pending_needs[task_id] = pending_needs
-            self.pending_tasks.append(task_id)
+        if is_scheduled_locally:
+            self.executing_tasks[task_id] = submitting_node_id
         else:
-            self.runnable_tasks.append(task_id)
+            pending_needs = []
+            for d_object_id in task.get_depends_on():
+                if d_object_id not in self.finished_objects.keys():
+                    pending_needs.append(d_object_id)
+                    if d_object_id in self._awaiting_completion.keys():
+                        self._awaiting_completion[d_object_id].append(task_id)
+                    else:
+                        self._awaiting_completion[d_object_id] = [task_id]
+            if len(pending_needs) > 0:
+                self._pending_needs[task_id] = pending_needs
+                self.pending_tasks.append(task_id)
+            else:
+                self.runnable_tasks.append(task_id)
 
     def _finish_task(self, task_id):
         node_id = self.executing_tasks[task_id]
@@ -120,19 +122,21 @@ class SchedulerState():
         """
         return node_id in self.finished_objects[object_id]
 
-class BaseScheduler():
+class BaseGlobalScheduler():
 
     def __init__(self, event_loop, scheduler_db):
         self._event_loop = event_loop
         self._db = scheduler_db
-        self._state = SchedulerState()
-        scheduler_db.get_updates(lambda update: self._handle_update(update))
+        self._state = GlobalSchedulerState()
+        scheduler_db.get_global_scheduler_updates(lambda update: self._handle_update(update))
 
     def _execute_task(self, node_id, task_id):
+#        print "GS executing task {} on node {}".format(task_id, node_id)
         self._state.set_executing(task_id, node_id)
         self._db.schedule(node_id, task_id)
 
     def _process_tasks(self):
+#        print "global scheduler processing tasks, runnable number {} | {}".format(len(self._state.runnable_tasks), self._state.runnable_tasks)
         for task_id in self._state.runnable_tasks:
             node_id = self._select_node(task_id)
 #            print "process tasks got node id {} for task id {}".format(node_id, task_id)
@@ -153,11 +157,10 @@ class BaseScheduler():
         self._process_tasks()
 
 
-class TrivialScheduler(BaseScheduler):
+class TrivialGlobalScheduler(BaseGlobalScheduler):
 
     def __init__(self, time_source, scheduler_db):
-        BaseScheduler.__init__(self, time_source, scheduler_db)
-        #super(TrivialScheduler).__init__(time_source, scheduler_db)
+        BaseGlobalScheduler.__init__(self, time_source, scheduler_db)
 
     def _select_node(self, task_id):
         for node_id, node_status in self._state.nodes.items():
@@ -165,10 +168,11 @@ class TrivialScheduler(BaseScheduler):
                 return node_id
         return None
 
-class LocationAwareScheduler(BaseScheduler):
+
+class LocationAwareGlobalScheduler(BaseGlobalScheduler):
 
     def __init__(self, time_source, scheduler_db):
-        BaseScheduler.__init__(self, time_source, scheduler_db)
+        BaseGlobalScheduler.__init__(self, time_source, scheduler_db)
 
     def _select_node(self, task_id):
         task_deps = self._state.tasks[task_id].get_depends_on()
@@ -187,17 +191,100 @@ class LocationAwareScheduler(BaseScheduler):
                     best_node_id = node_id
         return best_node_id
 
+class PassthroughLocalScheduler():
+    def __init__(self, time_source, node_runtime, scheduler_db):
+        self._time_source = time_source
+        self._node_runtime = node_runtime
+        self._node_id = node_runtime.node_id
+        self._scheduler_db = scheduler_db
+
+        self._node_runtime.get_updates(lambda update: self._handle_runtime_update(update))
+        self._scheduler_db.get_local_scheduler_updates(self._node_id, lambda update: self._handle_scheduler_db_update(update))
+
+    def _handle_runtime_update(self, update):
+        print '{:.6f}: LocalScheduler update {}'.format(self._time_source.get_time(), str(update))
+        if isinstance(update, ObjectReadyUpdate):
+            self._scheduler_db.object_ready(update.object_description, update.submitting_node_id)
+        elif isinstance(update, FinishTaskUpdate):
+            self._scheduler_db.finished(update.task_id)
+        elif isinstance(update, SubmitTaskUpdate):
+#            print "Forwarding task " + str(update.task)
+            self._scheduler_db.submit(update.task, self._node_runtime.node_id, self._schedule_locally(update.task))
+        else:
+            raise NotImplementedError('Unknown update: {}'.format(type(update)))
+
+
+    def _schedule_locally(self, task):
+        return False
+
+    def _handle_scheduler_db_update(self, update):
+        if isinstance(update, ScheduleTaskUpdate):
+#            print "Dispatching task " + str(update.task)
+            self._node_runtime.send_to_dispatcher(update.task, 0)
+        else:
+            raise NotImplementedError('Unknown update: {}'.format(type(update)))
+
+class SimpleLocalScheduler(PassthroughLocalScheduler):
+    def __init__(self, time_source, node_runtime, scheduler_db):
+        PassthroughLocalScheduler.__init__(self, time_source, node_runtime, scheduler_db)
+
+    def _schedule_locally(self, task):
+        if self._node_runtime.free_workers() > 0:
+            return False
+        print task.get_phase(0)
+        for d_object_id in task.get_phase(0).depends_on:
+            if not self._node_runtime.is_local(d_object_id):
+                return False
+        self._node_runtime.send_to_dispatcher(task, 1)
+        return True
+
+
+class BaseScheduler():
+    def __init__(self, time_source, scheduler_db):
+        self._time_source = time_source
+        self._scheduler_db = scheduler_db
+        self._global_scheduler = None
+        self._local_schedulers = {}
+
+    def get_global_scheduler(self):
+        if not self._global_scheduler:
+            self._global_scheduler = self._make_global_scheduler()
+        return self._global_scheduler
+
+    def get_local_scheduler(self, node_runtime):
+        node_id = node_runtime.node_id
+        if node_id not in self._local_schedulers.keys():
+            self._local_schedulers[node_id] = self._make_local_scheduler(node_runtime)
+        return self._local_schedulers[node_id]
+
+    def _make_global_scheduler(self):
+        raise NotImplementedError()
+
+    def _make_local_scheduler(self, node_runtime):
+        return PassthroughLocalScheduler(self._time_source, node_runtime, self._scheduler_db)
+
+
+class TrivialScheduler(BaseScheduler):
+    def __init__(self, time_source, scheduler_db):
+        BaseScheduler.__init__(self, time_source, scheduler_db)
+
+    def _make_global_scheduler(self):
+        return TrivialGlobalScheduler(self._time_source, self._scheduler_db)
+
+
+class LocationAwareScheduler(BaseScheduler):
+
+    def __init__(self, time_source, scheduler_db):
+        BaseScheduler.__init__(self, time_source, scheduler_db)
+
+    def _make_global_scheduler(self):
+        return LocationAwareGlobalScheduler(self._time_source, self._scheduler_db)
+
+
 class TrivialLocalScheduler(TrivialScheduler):
 
     def __init__(self, time_source, scheduler_db):
         TrivialScheduler.__init__(self, time_source, scheduler_db)
 
-    def _schedule_locally(self, task, submitting_node_id):
-        for d_object_id in task.get_depends_on():
-            if d_object_id not in self._finished_objects.keys() or self._finished_objects[d_object_id] != submitting_node_id:
-                return False
-        node_status = self._state.nodes[submitting_node_id]
-        if node_status.num_workers_executing >= node_status.num_workers:
-            return False
-        self._execute_task(submitting_node_id, task.id())
-        return True
+    def _make_local_scheduler(self, node_runtime):
+        return SimpleLocalScheduler(self._time_source, node_runtime, self._scheduler_db)

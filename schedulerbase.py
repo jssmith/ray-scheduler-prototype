@@ -1,25 +1,54 @@
 import abc
+import types
 
 class SubmitTaskUpdate():
-    def __init__(self, task, submitting_node_id):
-        self._task = task
-        self._submitting_node_id = str(submitting_node_id)
-
-    def get_task_id(self):
-        return self._task.id()
-
-    def get_task(self):
-        return self._task
-
-    def get_submitting_node_id(self):
-        return self._submitting_node_id
+    def __init__(self, task):
+        self.task = task
 
     def __str__(self):
-        return 'ScheduleTask({},{})'.format(self._task.id(), self._submitting_node_id)
+        return 'SubmitTask({})'.format(self.task.id())
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            return self._task == other._task and self._submitting_node_id == other._submitting_node_id
+            return self.task == other.task
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+class ForwardTaskUpdate():
+    def __init__(self, task, submitting_node_id, is_scheduled_locally):
+        self.task = task
+        self.submitting_node_id = str(submitting_node_id)
+        if type(is_scheduled_locally) != types.BooleanType:
+            raise ValueError("is scheduled locally must be boolean")
+        self.is_scheduled_locally = is_scheduled_locally
+
+    def __str__(self):
+        return 'ForwardTask({},{},{})'.format(self.task.id(), self.submitting_node_id, self.is_scheduled_locally)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.task == other.task and self.submitting_node_id == other.submitting_node_id and self.is_scheduled_locally == other.is_scheduled_locally
+        else:
+            return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
+class ScheduleTaskUpdate():
+    def __init__(self, task, node_id):
+        self.task = task
+        self.node_id = node_id
+
+    def __str__(self):
+        return 'ScheduleTask({},{})'.format(self.task.id(), self.node_id)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.task == other.task and self.node_id == other.node_id
         else:
             return False
 
@@ -29,17 +58,14 @@ class SubmitTaskUpdate():
 
 class FinishTaskUpdate():
     def __init__(self, task_id):
-        self._task_id = str(task_id)
-
-    def get_task_id(self):
-        return self._task_id
+        self.task_id = str(task_id)
 
     def __str__(self):
-        return 'FinishTask({})'.format(self._task_id)
+        return 'FinishTask({})'.format(self.task_id)
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            return self._task_id == other._task_id
+            return self.task_id == other.task_id
         else:
             return False
 
@@ -53,7 +79,7 @@ class ObjectReadyUpdate():
         self.submitting_node_id = str(submitting_node_id)
 
     def __str__(self):
-        return 'ObjectReadyUpdate({},{})'.format(self.object_description.object_id, self._submitting_node_id)
+        return 'ObjectReadyUpdate({},{})'.format(self.object_description.object_id, self.submitting_node_id)
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
@@ -98,6 +124,28 @@ class RemoveNodeUpdate():
     def __ne__(self, other):
         return not self.__eq__(other)
 
+class AbstractNodeRuntime():
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def send_to_dispatcher(self, task, priority):
+        """Submit work to the worker execution engine. The implementation
+           must preserve FIFO sequence for tasks of equal priority.
+
+           Args:
+               task: id of the task to schedule
+               priority: lower numbers mean higher priority.
+                         priorities must be integers
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_updates(self, update_handler):
+        """Called by the local scheduler to register a handler for local
+           runtime events.
+        """
+        pass
+
 
 class AbstractSchedulerDatabase():
     __metaclass__ = abc.ABCMeta
@@ -112,7 +160,7 @@ class AbstractSchedulerDatabase():
            Args:
                task: Task object describing task to schedule
         """
-        return
+        pass
 
     @abc.abstractmethod
     def finished(self, task_id):
@@ -124,7 +172,7 @@ class AbstractSchedulerDatabase():
            Args:
                task_id: id of the completed task
         """
-        return
+        pass
 
     @abc.abstractmethod
     def register_node(self, node_id, num_workers):
@@ -134,7 +182,7 @@ class AbstractSchedulerDatabase():
                node_id: id of the newly added node
                num_workers: number of workers the node supports
         """
-        return
+        pass
 
     @abc.abstractmethod
     def remove_node(self, node_id):
@@ -143,24 +191,25 @@ class AbstractSchedulerDatabase():
            Args:
                node_id: id of the node being removed
         """
-        return
+        pass
 
     @abc.abstractmethod
-    def get_updates(self, update_handler):
-        """May be called by a driver or a worker program, either
-           directly or by proxy through the local scheduler.
-
-           Starts returning results as soon as they become available
-           but never blocks beyond timeout_s from initiation time.
+    def get_global_scheduler_updates(self, update_handler):
+        """Called by the global scheduler to register a handler for updates
 
            Args:
-               timeout_s: number of seconds to wait for tasks to
-                   become available
-
-           Returns:
-               generator of task objects
+               update_hander: function for processing updates
         """
-        return
+        pass
+
+    @abc.abstractmethod
+    def get_local_scheduler_updates(self, node_id, update_handler):
+        """Called by the local scheduler to register a handler for updates
+
+           Args:
+               update_hander: function for processing updates
+        """
+        pass
 
     @abc.abstractmethod
     def schedule(self, node_id, task_id):
@@ -171,15 +220,5 @@ class AbstractSchedulerDatabase():
            Args:
                task_id: id of the completed task
         """
-        return
+        pass
 
-    @abc.abstractmethod
-    def get_work(self, node_id, timeout_s):
-        """Get tasks to execute on this node
-
-           Called by the worker or the local scheduler.
-
-           Args:
-               task_id: id of the completed task
-        """
-        return

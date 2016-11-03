@@ -38,9 +38,10 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self.replay_scheduler_database = replay_scheduler_database
             self.update = update
 
-    def __init__(self, time_source, event_loop, computation, num_nodes, num_workers_per_node, data_transfer_time_cost):
+    def __init__(self, time_source, event_loop, logger, computation, num_nodes, num_workers_per_node, data_transfer_time_cost):
         self._ts = time_source
         self._event_loop = event_loop
+        self._logger = logger
         self._computation = computation
         self._data_transfer_time_cost = data_transfer_time_cost
 
@@ -151,7 +152,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             if nextUpdate.phase_id < task.num_phases() - 1:
                 self._internal_scheduler_schedule(nextUpdate.task_id, nextUpdate.phase_id + 1, nextUpdate.worker_id)
             else:
-                print '{:.6f}: finshed task {} on worker {}'.format(self._ts.get_time(), nextUpdate.task_id, nextUpdate.worker_id)
+                self._logger.task_finished(nextUpdate.task_id, nextUpdate.worker_id)
                 self._internal_scheduler_finish(nextUpdate.task_id)
                 self._yield_update(FinishTaskUpdate(nextUpdate.task_id))
         if isinstance(nextUpdate, RegisterNodeUpdate):
@@ -164,7 +165,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             handler(update)
 
     def schedule(self, worker_id, task_id):
-        print '{:.6f}: execute task {} on worker {}'.format(self._ts.get_time(), task_id, worker_id)
+        self._logger.task_started(task_id, worker_id)
         self._execute_immediate(task_id, 0, worker_id)
 
     def get_work(self, worker_id, timeout_s):
@@ -481,6 +482,17 @@ class DirectedGraph():
 class ValidationError(Exception):
     def __init__(self, message):
         super(ValidationError, self).__init__(message)
+
+
+class PrintingLogger():
+    def __init__(self, system_time):
+        self._system_time = system_time
+
+    def task_started(self, task_id, worker_id):
+        print '{:.6f}: execute task {} on worker {}'.format(self._system_time.get_time(), task_id, worker_id)
+
+    def task_finished(self, task_id, worker_id):
+        print '{:.6f}: finshed task {} on worker {}'.format(self._system_time.get_time(), task_id, worker_id)
 
 
 def computation_decoder(dict):

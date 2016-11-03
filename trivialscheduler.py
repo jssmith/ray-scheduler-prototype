@@ -135,7 +135,7 @@ class BaseScheduler():
     def _process_tasks(self):
         for task_id in self._state.runnable_tasks:
             node_id = self._select_node(task_id)
-            print "process tasks got node id {} for task id {}".format(node_id, task_id)
+#            print "process tasks got node id {} for task id {}".format(node_id, task_id)
 
             if node_id is not None:
                 self._execute_task(node_id, task_id)

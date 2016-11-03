@@ -5,6 +5,8 @@ import os
 import replaystate
 from replaystate import *
 
+from replaytrace import schedulers
+
 class TestEventLoopTimers(unittest.TestCase):
     def setUp(self):
         self.ts = SystemTime()
@@ -135,6 +137,88 @@ def invalid_trace_suite():
     return unittest.TestSuite(map(TestInvalidTrace, test_names))
 
 
+class TestValidTrace(unittest.TestCase):
+    def __init__(self, name):
+        self._method_name = 'test_valid_' + name
+        super(TestValidTrace, self).__init__(self._method_name)
+        self._name = name
+
+    def __getattr__(self, name):
+        if name == self._method_name:
+            return self.runTest
+
+    class TaskTiming():
+        def __init__(self, task_id, start_timestamp, end_timestamp):
+            self.task_id = str(task_id)
+            self.start_timestamp = float(start_timestamp)
+            self.end_timestamp = float(end_timestamp)
+
+    class ValidatingLogger():
+        def __init__(self, test, system_time, task_timing):
+            self._test = test
+            self._system_time = system_time
+            self._task_timing = {}
+            for t in task_timing:
+                self._task_timing[t.task_id] = t
+            self._timed_tasks = set()
+
+        def task_started(self, task_id, worker_id):
+            self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._system_time.get_time())
+
+        def task_finished(self, task_id, worker_id):
+            self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._system_time.get_time())
+            self._timed_tasks.add(task_id)
+
+        def verify_all_finished(self):
+            self._test.assertItemsEqual(self._task_timing.keys(), self._timed_tasks)
+
+    @staticmethod
+    def validation_decoder(dict):
+        keys = frozenset(dict.keys())
+        if keys == frozenset([u'taskId', 'startTimestamp', 'endTimestamp']):
+            return TestValidTrace.TaskTiming(dict[u'taskId'], dict[u'startTimestamp'], dict[u'endTimestamp'])
+        if keys == frozenset([u'scheduler', u'numNodes', u'workersPerNode', u'transferTimeCost', u'taskTiming']):
+            return dict
+        else:
+            print "unexpected map in validation: {}".format(keys)
+            sys.exit(1)
+
+    def runTest(self):
+        import json
+        trace_fn = os.path.join(script_path(), 'traces', 'test', self._name + '.json')
+        expected_fn = os.path.join(script_path(), 'traces', 'validation', self._name + '.json')
+        trace_f = open(trace_fn, 'r')
+        computation = json.load(trace_f, object_hook=computation_decoder)
+        trace_f.close()
+        expected_f = open(expected_fn, 'r')
+        validations = json.load(expected_f, object_hook=TestValidTrace.validation_decoder)
+        expected_f.close()
+
+        for validation in validations:
+            scheduler_str = str(validation['scheduler'])
+            num_nodes = int(validation['numNodes'])
+            num_workers_per_node = int(validation['workersPerNode'])
+            transfer_time_cost = float(validation['transferTimeCost'])
+
+            system_time = replaystate.SystemTime()
+            event_loop = replaystate.EventLoop(system_time)
+            logger = TestValidTrace.ValidatingLogger(self, system_time, validation['taskTiming'])
+            scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, logger, computation, num_nodes, num_workers_per_node, transfer_time_cost)
+            scheduler = schedulers[scheduler_str](system_time, scheduler_db)
+            event_loop.run()
+            logger.verify_all_finished()
+
+
+def valid_trace_suite():
+    test_names = [
+        'forkjoin',
+        'singletask',
+        'two_chained_tasks',
+        'two_parallel_tasks',
+        'two_phase',
+        'two_results']
+    return unittest.TestSuite(map(TestValidTrace, test_names))
+
 def script_path():
     return os.path.dirname(os.path.realpath(__file__))
 
@@ -171,11 +255,12 @@ class TestReplayState(unittest.TestCase):
     def setUp(self):
         self.system_time = SystemTime()
         self.event_loop = EventLoop(self.system_time)
+        self.logger = PrintingLogger(self.system_time)
         self.scheduler_db = None
         self.updates_received = []
 
     def _setup_scheduler_db(self, computation, num_nodes, num_workers_per_node, transfer_time_cost):
-        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.event_loop, computation, num_nodes, num_workers_per_node, transfer_time_cost)
+        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.event_loop, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost)
         self.scheduler_db.get_updates(lambda update: self.updates_received.append(update))
 
     def _advance_check(self, delta, end_ts_expected, updates_expected):
@@ -279,6 +364,6 @@ class TestReplayState(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    tests = unittest.TestSuite([invalid_trace_suite()] + list(map(lambda x: unittest.TestLoader().loadTestsFromTestCase(x), [TestEventLoopTimers, TestComputationObjects, TestSchedulerObjects, TestReplayState])))
+    tests = unittest.TestSuite([invalid_trace_suite(), valid_trace_suite()] + list(map(lambda x: unittest.TestLoader().loadTestsFromTestCase(x), [TestEventLoopTimers, TestComputationObjects, TestSchedulerObjects, TestReplayState])))
     unittest.TextTestRunner(verbosity=2).run(tests)
     

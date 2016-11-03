@@ -4,6 +4,12 @@ import json
 
 import sys
 
+schedulers = {
+    'trivial' : TrivialScheduler,
+    'location_aware' : LocationAwareScheduler,
+    'trivial_local' : TrivialLocalScheduler
+}
+
 def usage():
     print 'Usage: test_scheduler num_nodes num_workers_per_node transfer_time_cost scheduler input.json'
 
@@ -15,11 +21,6 @@ def run_replay(args):
     num_nodes = int(args[1])
     num_workers_per_node = int(args[2])
     transfer_time_cost = float(args[3])
-    schedulers = {
-        'trivial' : TrivialScheduler,
-        'location_aware' : LocationAwareScheduler,
-        'trivial_local' : TrivialLocalScheduler
-    }
     scheduler_str = args[4]
     if scheduler_str not in schedulers.keys():
         usage()
@@ -33,7 +34,8 @@ def run_replay(args):
 
     system_time = replaystate.SystemTime()
     event_loop = replaystate.EventLoop(system_time)
-    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, computation, num_nodes, num_workers_per_node, transfer_time_cost)
+    logger = replaystate.PrintingLogger(system_time)
+    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, logger, computation, num_nodes, num_workers_per_node, transfer_time_cost)
     scheduler = schedulers[scheduler_str](system_time, scheduler_db)
     event_loop.run()
 

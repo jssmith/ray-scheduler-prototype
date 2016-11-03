@@ -1,0 +1,20 @@
+[
+  {
+    "scheduler": "trivial",
+    "numNodes": 1,
+    "workersPerNode": 3,
+    "transferTimeCost": 0,
+    "taskTiming": [
+      {
+        "taskId": 1,
+        "startTimestamp": 0.0,
+        "endTimestamp": 1.0
+      },
+      {
+        "taskId": 2,
+        "startTimestamp": 0.1,
+        "endTimestamp": 2.1
+      }
+    ]
+  }
+]

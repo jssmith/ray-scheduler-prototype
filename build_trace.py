@@ -101,7 +101,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
             object_dependencies[object_id].append(task_id)
 
     # The task ID should not be set if this the driver program.
-    if task_id is None:
+    if (task_id is None) and (event_log):
         task_id = str(len(task_roots))
         tasks.append({
             'taskId': task_id,

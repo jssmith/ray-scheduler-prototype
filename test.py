@@ -1,5 +1,6 @@
 import unittest
 import os
+import logging
 
 # TODO both of these needed?
 import replaystate
@@ -457,10 +458,309 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self.assertEquals([0.4], self._last_ready('2', 0))
 
 
+class TestNodeRuntime(unittest.TestCase):
+
+    class ObjectStore():
+        def __init__(self, system_time, test):
+            self._system_time = system_time
+            self._test = test
+            self._object_locations = defaultdict(set)
+
+            self._awaiting_objects = defaultdict(list)
+
+        def _install_object(self, object_id, node_id):
+            self._object_locations[str(object_id)].add(str(node_id))
+            for handler in self._awaiting_objects[(str(object_id), str(node_id))]:
+                self._system_time.schedule_immediate(handler)
+
+        def add_object(self, object_id, node_id, object_size):
+            self._test.objects_added.append((self._system_time.get_time(), object_id, node_id, object_size))
+
+        def get_locations(self, object_id):
+            raise NotImplementedError()
+
+        def get_updates(self, node_id, update_handler):
+            pass
+            #raise NotImplementedError()
+
+        def is_local(self, object_id, node_id):
+            return str(node_id) in self._object_locations[str(object_id)]
+
+        def require_object(self, object_id, node_id, on_done):
+            if self.is_local(object_id, node_id):
+                self._system_time.schedule_immediate(on_done)
+            else:
+                self._awaiting_objects[(str(object_id), str(node_id))].append(on_done)
+
+    class RecordingLogger():
+        def __init__(self, system_time):
+#            self._test = test
+            self._system_time = system_time
+            #self._task_timing = {}
+            #for t in task_timing:
+            #    self._task_timing[t.task_id] = t
+            #self._timed_tasks = set()
+
+        def task_started(self, task_id, worker_id):
+            pass
+            #self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._system_time.get_time())
+
+        def task_finished(self, task_id, worker_id):
+            pass
+            #self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._system_time.get_time())
+            #self._timed_tasks.add(task_id)
+
+
+    def setUp(self):
+        logging_format = '%(timestamp).6f %(name)s %(message)s'
+        logging.basicConfig(format=logging_format)
+        logging.getLogger().setLevel(logging.DEBUG)
+#        FORMAT = '%(asctime)-15s %(clientip)s %(user)-8s %(message)s'
+
+
+        self.system_time = SystemTime()
+        self.object_store = self.ObjectStore(self.system_time, self)
+        self.logger = self.RecordingLogger(self.system_time)
+
+        self.updates = []
+        self.objects_added = []
+
+        self.free_workers = []
+
+    def _setup_node_runtime(self, computation, node_id, num_workers):
+        self.node_id = node_id
+        self.num_workers = num_workers
+        self.node_runtime = replaystate.NodeRuntime(self.system_time, self.object_store, self.logger, computation, node_id, num_workers)
+        self.node_runtime.get_updates(lambda update: self._update_handler(update))
+
+    def _update_handler(self, update):
+        self.updates.append((self.system_time.get_time(), update))
+
+    def _advance(self):
+        while self.system_time.advance():
+            pass
+
+    def _get_workers(self):
+        self.free_workers.append((self.system_time.get_time(), self.node_runtime.free_workers()))
+
+    def test_one_task(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
+        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100)])
+        computation = ComputationDescription(root_task = 1, tasks = [task_0])
+        node_id = 1
+        num_workers = 2
+
+        self._setup_node_runtime(computation, node_id, num_workers)
+
+        self.assertEquals(num_workers, self.node_runtime.free_workers())
+
+        self.node_runtime.send_to_dispatcher(task_0, 0)
+
+        self.system_time.schedule_delayed(0.5, lambda: self._get_workers())
+
+        self._advance()
+
+        self.assertItemsEqual([(0.5, 1)], self.free_workers)
+        self.assertItemsEqual([(1.0, FinishTaskUpdate(task_0.id()))], self.updates)
+        self.assertItemsEqual([(1.0, '0', 1, 100)], self.objects_added)
+
+        self.updates = []
+        self._advance()
+
+        self.assertItemsEqual([], self.updates)
+
+
+    def test_one_task_with_phases(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
+        phase_0_1 = TaskPhase(phase_id = 1, depends_on = [], submits = [], duration = 1.5)
+        task_0 = Task(task_id = 1, phases = [phase_0_0, phase_0_1], results = [TaskResult(object_id = 0, size = 100)])
+        computation = ComputationDescription(root_task = 1, tasks = [task_0])
+        node_id = 1
+        num_workers = 2
+
+        self._setup_node_runtime(computation, node_id, num_workers)
+
+        self.assertEquals(num_workers, self.node_runtime.free_workers())
+
+        self.node_runtime.send_to_dispatcher(task_0, 0)
+
+        self.system_time.schedule_delayed(2.0, lambda: self._get_workers())
+
+        self._advance()
+
+        self.assertItemsEqual([(2.0, 1)], self.free_workers)
+        self.assertItemsEqual([(2.5, FinishTaskUpdate(task_0.id()))], self.updates)
+        self.assertItemsEqual([(2.5, '0', 1, 100)], self.objects_added)
+
+        self.updates = []
+        self._advance()
+
+        self.assertItemsEqual([], self.updates)
+
+    def test_two_results(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
+        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100), TaskResult(object_id = 1, size = 200)])
+        computation = ComputationDescription(root_task = 1, tasks = [task_0])
+        node_id = 1
+        num_workers = 1
+
+        self._setup_node_runtime(computation, node_id, num_workers)
+
+        self.node_runtime.send_to_dispatcher(task_0, 0)
+
+
+        self._advance()
+
+        self.assertItemsEqual([(1.0, FinishTaskUpdate(task_0.id()))], self.updates)
+        self.assertItemsEqual([(1.0, '0', 1, 100), (1.0, '1', 1, 200)], self.objects_added)
+
+        self.updates = []
+        self.objects_added = []
+        self._advance()
+
+        self.assertItemsEqual([], self.updates)
+        self.assertItemsEqual([], self.objects_added)
+
+
+    def test_task_submit(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
+        phase_0_1 = TaskPhase(phase_id = 1, depends_on = [], submits = [TaskSubmit(task_id = 2,time_offset = 0.4)], duration = 1.5)
+        task_0 = Task(task_id = 1, phases = [phase_0_0, phase_0_1], results = [TaskResult(object_id = 0, size = 100)])
+
+        phase_1_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.2)
+        task_1 = Task(task_id = 2, phases = [phase_1_0], results = [TaskResult(object_id = 1, size = 100)])
+
+        computation = ComputationDescription(root_task = 1, tasks = [task_0, task_1])
+        node_id = 1
+        num_workers = 2
+
+        self._setup_node_runtime(computation, node_id, num_workers)
+
+        self.assertEquals(num_workers, self.node_runtime.free_workers())
+
+        self.node_runtime.send_to_dispatcher(task_0, 0)
+
+        self._advance()
+
+        self.assertItemsEqual([(1.4, SubmitTaskUpdate(task_1)), (2.5, FinishTaskUpdate(task_0.id()))], self.updates)
+        self.assertItemsEqual([(2.5, '0', 1, 100)], self.objects_added)
+
+        self.updates = []
+        self.objects_added = []
+        self._advance()
+
+        self.assertItemsEqual([], self.updates)
+        self.assertItemsEqual([], self.objects_added)
+
+        self.node_runtime.send_to_dispatcher(task_1, 0)
+
+        self._advance()
+
+        self.assertItemsEqual([(3.7, FinishTaskUpdate(task_1.id()))], self.updates)
+        self.assertItemsEqual([(3.7, '1', 1, 100)], self.objects_added)
+
+    def test_priorities(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [TaskSubmit(task_id = 2,time_offset = 0.4), TaskSubmit(task_id = 3,time_offset = 0.4)], duration = 1.0)
+        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100)])
+        phase_1_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.5)
+        task_1 = Task(task_id = 2, phases = [phase_1_0], results = [TaskResult(object_id = 1, size = 100)])
+        phase_2_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.5)
+        task_2 = Task(task_id = 3, phases = [phase_2_0], results = [TaskResult(object_id = 2, size = 100)])
+
+        computation = ComputationDescription(root_task = 1, tasks = [task_0, task_1, task_2])
+        node_id = 1
+        num_workers = 1
+
+        self._setup_node_runtime(computation, node_id, num_workers)
+
+        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self.node_runtime.send_to_dispatcher(task_2, 0)
+        self._advance()
+        self.assertItemsEqual([(1.5, FinishTaskUpdate(task_1.id())), (3.0, FinishTaskUpdate(task_2.id()))], self.updates)
+
+        self.updates = []
+        self.node_runtime.send_to_dispatcher(task_2, 0)
+        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self._advance()
+        self.assertItemsEqual([(4.5, FinishTaskUpdate(task_2.id())), (6.0, FinishTaskUpdate(task_1.id()))], self.updates)
+
+        self.updates = []
+        self.node_runtime.send_to_dispatcher(task_2, 1)
+        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self._advance()
+        self.assertItemsEqual([(7.5, FinishTaskUpdate(task_1.id())), (9.0, FinishTaskUpdate(task_2.id()))], self.updates)
+
+    def test_single_dependency(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [TaskSubmit(task_id = 2,time_offset = 0.4)], duration = 0.9)
+        phase_0_1 = TaskPhase(phase_id = 1, depends_on = [1], submits = [], duration = 0.8)
+        task_0 = Task(task_id = 1, phases = [phase_0_0, phase_0_1], results = [TaskResult(object_id = 0, size = 100)])
+
+        phase_1_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.5)
+        task_1 = Task(task_id = 2, phases = [phase_1_0], results = [TaskResult(object_id = 1, size = 100)])
+
+        computation = ComputationDescription(root_task = 1, tasks = [task_0, task_1])
+        node_id = 1
+        num_workers = 2
+
+        self._setup_node_runtime(computation, node_id, num_workers)
+        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self._advance()
+
+        self.assertItemsEqual([(0.4, SubmitTaskUpdate(task_1))], self.updates)
+        self.assertEquals(0.9, self.system_time.get_time())
+
+        self.updates = []
+        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self._advance()
+        self.assertItemsEqual([(2.4, FinishTaskUpdate(task_1.id()))], self.updates)
+        self.assertEquals(2.4, self.system_time.get_time())
+
+        self.updates = []
+        self.object_store._install_object(1, node_id)
+        self._advance()
+        self.assertItemsEqual([(3.2, FinishTaskUpdate(task_0.id()))], self.updates)
+
+
+
+    def test_multiple_dependencies(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [TaskSubmit(task_id = 2,time_offset = 0.4), TaskSubmit(task_id = 3,time_offset = 0.4)], duration = 0.9)
+        phase_0_1 = TaskPhase(phase_id = 1, depends_on = [1, 2], submits = [], duration = 0.8)
+        task_0 = Task(task_id = 1, phases = [phase_0_0, phase_0_1], results = [TaskResult(object_id = 0, size = 100)])
+
+        phase_1_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 2.5)
+        task_1 = Task(task_id = 2, phases = [phase_1_0], results = [TaskResult(object_id = 1, size = 100)])
+
+        phase_2_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 0.5)
+        task_2 = Task(task_id = 3, phases = [phase_2_0], results = [TaskResult(object_id = 2, size = 500)])
+
+        computation = ComputationDescription(root_task = 1, tasks = [task_0, task_1, task_2])
+        node_id = 1
+        num_workers = 3
+
+        self._setup_node_runtime(computation, node_id, num_workers)
+        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self._advance()
+
+        self.assertItemsEqual([(0.4, SubmitTaskUpdate(task_1)), (0.4, SubmitTaskUpdate(task_2))], self.updates)
+        self.assertEquals(0.9, self.system_time.get_time())
+
+        self.updates = []
+        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self.node_runtime.send_to_dispatcher(task_2, 0)
+        self._advance()
+        self.assertItemsEqual([(3.4, FinishTaskUpdate(task_1.id())), (1.4, FinishTaskUpdate(task_2.id()))], self.updates)
+        self.assertEquals(3.4, self.system_time.get_time())
+
+        self.updates = []
+        self.object_store._install_object(1, node_id)
+        self.object_store._install_object(2, node_id)
+        self._advance()
+        self.assertItemsEqual([(4.2, FinishTaskUpdate(task_0.id()))], self.updates)
+
 if __name__ == '__main__':
     tests = unittest.TestSuite([invalid_trace_suite(), valid_trace_suite()] +
                 list(map(lambda x: unittest.TestLoader().loadTestsFromTestCase(x),
                 [TestEventLoopTimers, TestComputationObjects, TestSchedulerObjects,
-                 TestReplayState, TestObjectStoreRuntime])))
+                 TestReplayState, TestObjectStoreRuntime, TestNodeRuntime])))
     unittest.TextTestRunner(verbosity=2).run(tests)
     

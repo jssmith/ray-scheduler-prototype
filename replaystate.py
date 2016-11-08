@@ -1,6 +1,7 @@
 import sys
 import heapq
 import itertools
+import logging
 
 from collections import defaultdict
 from schedulerbase import *
@@ -173,6 +174,7 @@ class ObjectDescription():
 
 class NodeRuntime():
     def __init__(self, system_time, object_store, logger, computation, node_id, num_workers):
+        self._pylogger = logging.getLogger(__name__+'.NodeRuntime')
         self._system_time = system_time
         self._object_store = object_store
         self._logger = logger
@@ -192,12 +194,11 @@ class NodeRuntime():
         return self._object_store.is_local(object_id, self.node_id)
 
     def send_to_dispatcher(self, task, priority):
+        self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority), extra={'timestamp':self._system_time.get_time()})
         task_id = task.id()
-        if self.num_workers_executing < self.num_workers:
-            self._start_task(task_id)
-        else:
-            heapq.heappush(self._queue, (priority, self._queue_seq, task_id))
-            self._queue_seq += 1
+        heapq.heappush(self._queue, (priority, self._queue_seq, task_id))
+        self._queue_seq += 1
+        self._system_time.schedule_immediate(lambda: self._process_tasks())
 
     def get_updates(self, update_handler):
         self._update_handlers.append(update_handler)
@@ -230,8 +231,6 @@ class NodeRuntime():
             self._object_dependencies.add(object_id)
 
         def object_available(self, object_id):
-#            print self._object_dependencies
-#            print 'remove object dependency {} at task id {} phase id {}'.format(object_id, self._task_id, self._phase_id)
             self._object_dependencies.remove(object_id)
             if not self._object_dependencies:
                 self._node_runtime._execute_phase_immediate(self._task_id, self._phase_id)
@@ -251,7 +250,7 @@ class NodeRuntime():
             update_handler(update)
 
     def _execute_phase_immediate(self, task_id, phase_id):
-#        print "execute phase immediate {} {}".format(task_id, phase_id)
+        self._pylogger.debug('executing task {} phase {}'.format(task_id, phase_id), extra={'timestamp':self._system_time.get_time()})
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
         for schedule_task in task_phase.submits:
             self._system_time.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
@@ -264,25 +263,26 @@ class NodeRuntime():
         for d_object_id in depends_on:
             if not self._object_store.is_local(d_object_id, self.node_id):
                 needs.add_object_dependency(d_object_id)
-#                print "add requires object {} on node {}".format(d_object_id, self.node_id)
-                self._object_store.require_object(d_object_id, self.node_id, lambda: needs.object_available(d_object_id))
+                self._object_store.require_object(d_object_id, self.node_id, lambda d_object_id=d_object_id: needs.object_available(d_object_id))
         if not needs.has_dependencies():
             self._execute_phase_immediate(task_id, phase_id)
 
     def _handle_update(self, update):
         if isinstance(update, self.TaskSubmitted):
-            self._yield_update(SubmitTaskUpdate(self._computation.get_task(update.submitted_task_id)))
+            self._system_time.schedule_immediate(lambda: self._yield_update(SubmitTaskUpdate(self._computation.get_task(update.submitted_task_id))))
         elif isinstance(update, self.TaskPhaseComplete):
+            self._pylogger.debug('completed task {} phase {}'.format(update.task_id, update.phase_id), extra={'timestamp':self._system_time.get_time()})
             task = self._computation.get_task(update.task_id)
             if update.phase_id < task.num_phases() - 1:
-                self._internal_scheduler_schedule(update.task_id, update.phase_id + 1)
+                self._system_time.schedule_immediate(lambda: self._internal_scheduler_schedule(update.task_id, update.phase_id + 1))
             else:
                 self._logger.task_finished(update.task_id, self.node_id)
                 for res in task.get_results():
                     self._object_store.add_object(res. object_id, self.node_id, res.size)
+#                print "XXX finished task {} number of phases is {}".format(update.task_id, num_phases)
                 self._yield_update(FinishTaskUpdate(update.task_id))
                 self.num_workers_executing -= 1
-                self._process_tasks()
+                self._system_time.schedule_immediate(lambda: self._process_tasks())
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
@@ -605,7 +605,7 @@ class PrintingLogger():
         print '{:.6f}: execute task {} on worker {}'.format(self._system_time.get_time(), task_id, worker_id)
 
     def task_finished(self, task_id, worker_id):
-        print '{:.6f}: finshed task {} on worker {}'.format(self._system_time.get_time(), task_id, worker_id)
+        print '{:.6f}: finished task {} on worker {}'.format(self._system_time.get_time(), task_id, worker_id)
 
 
 def computation_decoder(dict):

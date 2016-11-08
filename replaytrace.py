@@ -3,6 +3,7 @@ from trivialscheduler import *
 import json
 
 import sys
+import logging
 
 schedulers = {
     'trivial' : TrivialScheduler,
@@ -27,8 +28,14 @@ def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_wo
     scheduler_db.schedule_root(0)
     event_loop.run()
 
+def setup_logging():
+    logging_format = '%(timestamp).6f %(name)s %(message)s'
+    logging.basicConfig(format=logging_format)
+    logging.getLogger().setLevel(logging.DEBUG)
 
 def run_replay(args):
+    #setup_logging()
+
     if len(args) != 6:
         usage()
         sys.exit(1)

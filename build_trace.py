@@ -1,4 +1,5 @@
 import os
+import sys
 import simplejson as json
 from collections import defaultdict
 
@@ -44,6 +45,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
     tasks = []
     phases = []
 
+    is_driver = False
     task_id = None
     phase = 0
     depends_on = []
@@ -64,6 +66,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
         elif event_type == 'DRIVER_BEGIN':
             assert(task_id == None)
             cur_time = event['time']
+            is_driver = True
             print "Program began at ", cur_time
         elif event_type == 'BEGIN':
             phases = []
@@ -99,6 +102,18 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
         elif event_type == 'PUT':
             object_id = event['objectId']
             object_dependencies[object_id].append(task_id)
+        elif event_type == 'DRIVER_END':
+            if not is_driver:
+                continue
+            phases.append({
+                'phaseId': phase,
+                'dependsOn': depends_on,
+                'submits': submits,
+                'duration': event['time'] - cur_time,
+                })
+        else:
+            print "Found unexpected event type {0}".format(event_type)
+            sys.exit(-1)
 
     # The task ID should not be set if this the driver program.
     if (task_id is None) and (event_log):

@@ -252,6 +252,10 @@ class TestSchedulerObjects(unittest.TestCase):
 class TestReplayState(unittest.TestCase):
 
     def setUp(self):
+        logging_format = '%(timestamp).6f %(name)s %(message)s'
+        logging.basicConfig(format=logging_format)
+        logging.getLogger().setLevel(logging.DEBUG)
+
         self.system_time = SystemTime()
         self.event_loop = EventLoop(self.system_time)
         self.logger = PrintingLogger(self.system_time)
@@ -305,7 +309,7 @@ class TestReplayState(unittest.TestCase):
         self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost)
 
         local_scheduler_updates_expected = [ScheduleTaskUpdate(task_0, 0)]
-        global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node)]
+        global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node), ForwardTaskUpdate(task_0, 0, True)]
         self._advance_check(10, 10, local_scheduler_updates_expected, global_scheduler_updates_expected)
         self._end_check()
 
@@ -325,8 +329,9 @@ class TestReplayState(unittest.TestCase):
         transfer_time_cost = 0
         self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost)
 
-        global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node)]
         local_scheduler_updates_expected = [ScheduleTaskUpdate(task_0, 0)]
+        global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node),
+                                             ForwardTaskUpdate(task_0, 0, True)]
         self._advance_check(100, 100, local_scheduler_updates_expected, global_scheduler_updates_expected)
         self._advance_check(100, 200, [], [])
 
@@ -357,17 +362,15 @@ class TestReplayState(unittest.TestCase):
         self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost)
 
         local_scheduler_updates_expected = [ScheduleTaskUpdate(task_0, 0)]
-        global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node)]
+        global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node), ForwardTaskUpdate(task = task_0, submitting_node_id = 0, is_scheduled_locally = True)]
         self._advance_check(100, 100, local_scheduler_updates_expected, global_scheduler_updates_expected)
         self._advance_check(100, 200, [], [])
 
-        self.system_time.schedule_immediate(lambda: self.scheduler_db.submit(task_0, 0, True))
         self.system_time.schedule_delayed(phase_0_0.submits[0].time_offset, lambda: self.scheduler_db.submit(task_1, 0, False))
         self.system_time.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
 
         local_scheduler_updates_expected = []
-        global_scheduler_updates_expected = [ForwardTaskUpdate(task = task_0, submitting_node_id = 0, is_scheduled_locally = True),
-                                             ForwardTaskUpdate(task = task_1, submitting_node_id = 0, is_scheduled_locally = False),
+        global_scheduler_updates_expected = [ForwardTaskUpdate(task = task_1, submitting_node_id = 0, is_scheduled_locally = False),
                                              FinishTaskUpdate(task_id = task_0.id())]
 
         self._advance_check(100, 300, local_scheduler_updates_expected, global_scheduler_updates_expected)

@@ -42,6 +42,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         return ReplaySchedulerDatabase.HandlerContext(self, update)
 
     def submit(self, task, submitting_node_id, is_scheduled_locally):
+        print "submit called"
         self._yield_global_scheduler_update(ForwardTaskUpdate(task, submitting_node_id, is_scheduled_locally))
 
     def finished(self, task_id):
@@ -90,12 +91,14 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         self._yield_local_scheduler_update(ScheduleTaskUpdate(self._computation.get_task(task_id), node_id))
 
     def schedule_root(self, node_id):
-        # schedule root task
+        # we schedule the root task separately, initiating it out of global state
+        # by sending a scheduling update to the local scheduler and a forwarding
+        # update to the global scheduler.
         root_task = self._computation.get_root_task()
         if root_task is not None:
             self.root_task_id = root_task.id()
             self._ts.schedule_immediate(lambda: self.schedule(node_id, self.root_task_id))
-            self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True))
+            self._ts.schedule_immediate(lambda: self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True)))
 
 
 class ObjectStoreRuntime():

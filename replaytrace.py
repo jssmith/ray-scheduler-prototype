@@ -34,7 +34,7 @@ def setup_logging():
     logging.getLogger().setLevel(logging.DEBUG)
 
 def run_replay(args):
-    #setup_logging()
+    setup_logging()
 
     if len(args) != 6:
         usage()

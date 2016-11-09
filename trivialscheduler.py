@@ -1,5 +1,6 @@
 from collections import defaultdict
 import sys
+import logging
 
 from schedulerbase import *
 from itertools import ifilter
@@ -50,7 +51,8 @@ class GlobalSchedulerState():
     def set_executing(self, task_id, node_id):
         node_status = self.nodes[node_id]
         node_status.inc_executing()
-        self.runnable_tasks.remove(task_id)
+        if task_id in self.runnable_tasks:
+            self.runnable_tasks.remove(task_id)
         self.executing_tasks[task_id] = node_id
 
     def update(self, update, timestamp):
@@ -78,7 +80,7 @@ class GlobalSchedulerState():
         task_id = task.id()
         self.tasks[task_id] = task
         if is_scheduled_locally:
-            self.executing_tasks[task_id] = submitting_node_id
+            self.set_executing(task_id, submitting_node_id)
         else:
             pending_needs = []
             for d_object_id in task.get_depends_on():
@@ -124,8 +126,8 @@ class GlobalSchedulerState():
 
 class BaseGlobalScheduler():
 
-    def __init__(self, event_loop, scheduler_db):
-        self._event_loop = event_loop
+    def __init__(self, system_time, scheduler_db):
+        self._system_time = system_time
         self._db = scheduler_db
         self._state = GlobalSchedulerState()
         scheduler_db.get_global_scheduler_updates(lambda update: self._handle_update(update))
@@ -152,18 +154,20 @@ class BaseGlobalScheduler():
         raise NotImplementedError()
 
     def _handle_update(self, update):
-        self._state.update(update, self._event_loop.get_time())
+        self._state.update(update, self._system_time.get_time())
         # TODO ability to process tasks periodically
         self._process_tasks()
 
 
 class TrivialGlobalScheduler(BaseGlobalScheduler):
 
-    def __init__(self, time_source, scheduler_db):
-        BaseGlobalScheduler.__init__(self, time_source, scheduler_db)
+    def __init__(self, system_time, scheduler_db):
+        self._pylogger = logging.getLogger(__name__+'.TrivialGlobalScheduler')
+        BaseGlobalScheduler.__init__(self, system_time, scheduler_db)
 
     def _select_node(self, task_id):
         for node_id, node_status in self._state.nodes.items():
+            self._pylogger.debug('can we schedule on node {}? {} < {} so {}'.format(node_id, node_status.num_workers_executing, node_status.num_workers, bool(node_status.num_workers_executing < node_status.num_workers)), extra={'timestamp':self._system_time.get_time()})
             if node_status.num_workers_executing < node_status.num_workers:
                 return node_id
         return None
@@ -171,8 +175,8 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
 
 class LocationAwareGlobalScheduler(BaseGlobalScheduler):
 
-    def __init__(self, time_source, scheduler_db):
-        BaseGlobalScheduler.__init__(self, time_source, scheduler_db)
+    def __init__(self, system_time, scheduler_db):
+        BaseGlobalScheduler.__init__(self, system_time, scheduler_db)
 
     def _select_node(self, task_id):
         task_deps = self._state.tasks[task_id].get_depends_on()
@@ -192,8 +196,8 @@ class LocationAwareGlobalScheduler(BaseGlobalScheduler):
         return best_node_id
 
 class PassthroughLocalScheduler():
-    def __init__(self, time_source, node_runtime, scheduler_db):
-        self._time_source = time_source
+    def __init__(self, system_time, node_runtime, scheduler_db):
+        self._system_time = system_time
         self._node_runtime = node_runtime
         self._node_id = node_runtime.node_id
         self._scheduler_db = scheduler_db
@@ -202,7 +206,7 @@ class PassthroughLocalScheduler():
         self._scheduler_db.get_local_scheduler_updates(self._node_id, lambda update: self._handle_scheduler_db_update(update))
 
     def _handle_runtime_update(self, update):
-        print '{:.6f}: LocalScheduler update {}'.format(self._time_source.get_time(), str(update))
+        print '{:.6f}: LocalScheduler update {}'.format(self._system_time.get_time(), str(update))
         if isinstance(update, ObjectReadyUpdate):
             self._scheduler_db.object_ready(update.object_description, update.submitting_node_id)
         elif isinstance(update, FinishTaskUpdate):
@@ -225,8 +229,8 @@ class PassthroughLocalScheduler():
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
 class SimpleLocalScheduler(PassthroughLocalScheduler):
-    def __init__(self, time_source, node_runtime, scheduler_db):
-        PassthroughLocalScheduler.__init__(self, time_source, node_runtime, scheduler_db)
+    def __init__(self, system_time, node_runtime, scheduler_db):
+        PassthroughLocalScheduler.__init__(self, system_time, node_runtime, scheduler_db)
 
     def _schedule_locally(self, task):
         if self._node_runtime.free_workers() > 0:
@@ -240,8 +244,8 @@ class SimpleLocalScheduler(PassthroughLocalScheduler):
 
 
 class BaseScheduler():
-    def __init__(self, time_source, scheduler_db):
-        self._time_source = time_source
+    def __init__(self, system_time, scheduler_db):
+        self._system_time = system_time
         self._scheduler_db = scheduler_db
         self._global_scheduler = None
         self._local_schedulers = {}
@@ -261,30 +265,30 @@ class BaseScheduler():
         raise NotImplementedError()
 
     def _make_local_scheduler(self, node_runtime):
-        return PassthroughLocalScheduler(self._time_source, node_runtime, self._scheduler_db)
+        return PassthroughLocalScheduler(self._system_time, node_runtime, self._scheduler_db)
 
 
 class TrivialScheduler(BaseScheduler):
-    def __init__(self, time_source, scheduler_db):
-        BaseScheduler.__init__(self, time_source, scheduler_db)
+    def __init__(self, system_time, scheduler_db):
+        BaseScheduler.__init__(self, system_time, scheduler_db)
 
     def _make_global_scheduler(self):
-        return TrivialGlobalScheduler(self._time_source, self._scheduler_db)
+        return TrivialGlobalScheduler(self._system_time, self._scheduler_db)
 
 
 class LocationAwareScheduler(BaseScheduler):
 
-    def __init__(self, time_source, scheduler_db):
-        BaseScheduler.__init__(self, time_source, scheduler_db)
+    def __init__(self, system_time, scheduler_db):
+        BaseScheduler.__init__(self, system_time, scheduler_db)
 
     def _make_global_scheduler(self):
-        return LocationAwareGlobalScheduler(self._time_source, self._scheduler_db)
+        return LocationAwareGlobalScheduler(self._system_time, self._scheduler_db)
 
 
 class TrivialLocalScheduler(TrivialScheduler):
 
-    def __init__(self, time_source, scheduler_db):
-        TrivialScheduler.__init__(self, time_source, scheduler_db)
+    def __init__(self, system_time, scheduler_db):
+        TrivialScheduler.__init__(self, system_time, scheduler_db)
 
     def _make_local_scheduler(self, node_runtime):
-        return SimpleLocalScheduler(self._time_source, node_runtime, self._scheduler_db)
+        return SimpleLocalScheduler(self._system_time, node_runtime, self._scheduler_db)

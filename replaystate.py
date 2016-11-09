@@ -19,7 +19,9 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self.update = update
 
     def __init__(self, time_source, event_loop, logger, computation, num_nodes, num_workers_per_node, data_transfer_time_cost):
-        self._ts = time_source
+        self._pylogger = logging.getLogger(__name__+'.ReplaySchedulerDatabase')
+
+        self._system_time = time_source
         self._event_loop = event_loop
         self._logger = logger
         self._computation = computation
@@ -36,7 +38,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
 
         # schedule worker registration
         for i in range(0, num_nodes):
-            self._ts.schedule_immediate(lambda i=i: self._handle_update(RegisterNodeUpdate(i, num_workers_per_node)))
+            self._system_time.schedule_immediate(lambda i=i: self._handle_update(RegisterNodeUpdate(i, num_workers_per_node)))
 
     def _context(self, update):
         return ReplaySchedulerDatabase.HandlerContext(self, update)
@@ -75,15 +77,17 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             raise NotImplementedError('Unable to handle update of type {}'.format(type(nextUpdate)))
 
     def _yield_global_scheduler_update(self, update):
+        self._pylogger.debug('sending update to global scheduler: {}'.format(str(update)), extra={'timestamp':self._system_time.get_time()})
         for handler in self._global_scheduler_update_handlers:
             handler(update)
 
     def _yield_local_scheduler_update(self, update):
+        self._pylogger.debug('sending update to node {} local scheduler: {}'.format(str(update.node_id), str(update)), extra={'timestamp':self._system_time.get_time()})
 #        print "yield locally targeting {}".format(update.node_id)
 #        print "lsh" + str(self._local_scheduler_update_handlers)
         for handler in self._local_scheduler_update_handlers[str(update.node_id)]:
 #            print "SDB sending update {} to node {}".format(update, update.node_id)
-            self._ts.schedule_immediate(lambda: handler(update))
+            self._system_time.schedule_immediate(lambda: handler(update))
 
     def schedule(self, node_id, task_id):
 #        print("State DB received request to schedule task {} on node {}".format(task_id, node_id))
@@ -97,8 +101,8 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         root_task = self._computation.get_root_task()
         if root_task is not None:
             self.root_task_id = root_task.id()
-            self._ts.schedule_immediate(lambda: self.schedule(node_id, self.root_task_id))
-            self._ts.schedule_immediate(lambda: self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True)))
+            self._system_time.schedule_immediate(lambda: self.schedule(node_id, self.root_task_id))
+            self._system_time.schedule_immediate(lambda: self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True)))
 
 
 class ObjectStoreRuntime():
@@ -225,17 +229,17 @@ class NodeRuntime():
             self._task_id = task_id
             self._phase_id = phase_id
 
-            self._object_dependencies = set()
+            self.object_dependencies = set()
 
         def has_dependencies(self):
-            return bool(self._object_dependencies)
+            return bool(self.object_dependencies)
 
         def add_object_dependency(self, object_id):
-            self._object_dependencies.add(object_id)
+            self.object_dependencies.add(object_id)
 
         def object_available(self, object_id):
-            self._object_dependencies.remove(object_id)
-            if not self._object_dependencies:
+            self.object_dependencies.remove(object_id)
+            if not self.object_dependencies:
                 self._node_runtime._execute_phase_immediate(self._task_id, self._phase_id)
 
     def _start_task(self, task_id):
@@ -269,6 +273,8 @@ class NodeRuntime():
                 self._object_store.require_object(d_object_id, self.node_id, lambda d_object_id=d_object_id: needs.object_available(d_object_id))
         if not needs.has_dependencies():
             self._execute_phase_immediate(task_id, phase_id)
+        else:
+            self._pylogger.debug('task {} phase {} waiting for dependencies: {}'.format(task_id, phase_id, str(needs.object_dependencies)), extra={'timestamp':self._system_time.get_time()})
 
     def _handle_update(self, update):
         if isinstance(update, self.TaskSubmitted):
@@ -277,8 +283,10 @@ class NodeRuntime():
             self._pylogger.debug('completed task {} phase {}'.format(update.task_id, update.phase_id), extra={'timestamp':self._system_time.get_time()})
             task = self._computation.get_task(update.task_id)
             if update.phase_id < task.num_phases() - 1:
+                self._pylogger.debug('task {} has further phases'.format(update.task_id), extra={'timestamp':self._system_time.get_time()})
                 self._system_time.schedule_immediate(lambda: self._internal_scheduler_schedule(update.task_id, update.phase_id + 1))
             else:
+                self._pylogger.debug('completed task {}'.format(update.task_id), extra={'timestamp':self._system_time.get_time()})
                 self._logger.task_finished(update.task_id, self.node_id)
                 for res in task.get_results():
                     self._object_store.add_object(res. object_id, self.node_id, res.size)
@@ -335,7 +343,7 @@ class EventLoop():
             self.is_cancelled = False
 
     def __init__(self, timesource):
-        self._ts = timesource
+        self._system_time = timesource
         self._timer_id_seq = 1
         self.is_stopped = True
         self._timers = {}
@@ -352,7 +360,7 @@ class EventLoop():
         self._timer_id_seq += 1
         context = EventLoop.EventLoopData(self, timer_id, handler, context)
         self._timers[timer_id] = context
-        self._ts.schedule_delayed(delta, lambda: self.timer_handler(context))
+        self._system_time.schedule_delayed(delta, lambda: self.timer_handler(context))
         return timer_id
 
     def remove_timer(self, timer_id):
@@ -364,7 +372,7 @@ class EventLoop():
         if not self.is_stopped:
             raise RuntimeError('Event loop already running')
         self.is_stopped = False
-        while self._ts.advance() and not self.is_stopped:
+        while self._system_time.advance() and not self.is_stopped:
             pass
         self.is_stopped = True
 

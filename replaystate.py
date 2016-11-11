@@ -4,6 +4,7 @@ import itertools
 import logging
 
 from collections import defaultdict
+from collections import deque
 from schedulerbase import *
 
 
@@ -113,8 +114,10 @@ class ObjectStoreRuntime():
         self._update_handlers = defaultdict(list)
         self._data_transfer_time_cost = data_transfer_time_cost
         self._awaiting_completion = defaultdict(list)
+        self._unready_objects_locations = defaultdict(set)
 
     def add_object(self, object_id, node_id, object_size):
+        #del self._unready_objects_locations[object_id]
         self._objects_locations[object_id].add(node_id)
         self._object_sizes[object_id] = object_size
         self._yield_object_ready_update(object_id, node_id, object_size)
@@ -126,6 +129,13 @@ class ObjectStoreRuntime():
                     self._copy_object(object_id, d_node_id, node_id, on_done) 
             del self._awaiting_completion[object_id]
 
+    def schedule_object(self, object_id, node_id, object_size):
+        self._unready_objects_locations[object_id].add(node_id)
+        self._object_sizes[object_id] = object_size
+
+    def get_unready_locations(self, object_id):
+        return self._undready_objects_locations[object_id]
+
     def get_locations(self, object_id):
         return self._objects_locations[object_id]
 
@@ -134,6 +144,9 @@ class ObjectStoreRuntime():
 
     def is_local(self, object_id, node_id):
         return node_id in self._objects_locations[object_id]
+
+    def get_object_size(self, object_id):
+        return self._object_sizes(object_id)
 
     def _yield_object_ready_update(self, object_id, node_id, object_size):
         self._yield_update(node_id, ObjectReadyUpdate(ObjectDescription(object_id, node_id, object_size), node_id))
@@ -191,6 +204,9 @@ class NodeRuntime():
         self.node_id = node_id
         self.num_workers_executing = 0
 
+        self._time_buffer_size = 20
+        self._task_start_times = deque([], self._time_buffer_size)    
+
         self._queue_seq = 0
         self._queue = []
 
@@ -199,6 +215,16 @@ class NodeRuntime():
 
     def is_local(self, object_id):
         return self._object_store.is_local(object_id, self.node_id)
+
+
+    def get_object_size(self, object_id):
+        return self._object_store.get_object_size(object_id)
+
+    def get_dispatch_queue_size(self):
+        return len(self._queue)
+
+    def get_node_eff_rate(self):
+        return len(self._task_start_times) / (self._task_start_times[-1] - self._task_start_times[0])
 
     def send_to_dispatcher(self, task, priority):
         self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority), extra={'timestamp':self._system_time.get_time()})
@@ -243,6 +269,7 @@ class NodeRuntime():
                 self._node_runtime._execute_phase_immediate(self._task_id, self._phase_id)
 
     def _start_task(self, task_id):
+        self._task_start_times.append(self._system_time.get_time())
         self.num_workers_executing += 1
         self._logger.task_started(task_id, self.node_id)
         self._internal_scheduler_schedule(task_id, 0)
@@ -612,11 +639,11 @@ class PrintingLogger():
     def __init__(self, system_time):
         self._system_time = system_time
 
-    def task_started(self, task_id, worker_id):
-        print '{:.6f}: execute task {} on worker {}'.format(self._system_time.get_time(), task_id, worker_id)
+    def task_started(self, task_id, node_id):
+        print '{:.6f}: execute task {} on node {}'.format(self._system_time.get_time(), task_id, node_id)
 
-    def task_finished(self, task_id, worker_id):
-        print '{:.6f}: finished task {} on worker {}'.format(self._system_time.get_time(), task_id, worker_id)
+    def task_finished(self, task_id, node_id):
+        print '{:.6f}: finished task {} on node {}'.format(self._system_time.get_time(), task_id, node_id)
 
 
 def computation_decoder(dict):

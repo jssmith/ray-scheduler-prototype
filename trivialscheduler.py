@@ -168,6 +168,7 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
     def _select_node(self, task_id):
         for node_id, node_status in self._state.nodes.items():
             self._pylogger.debug('can we schedule on node {}? {} < {} so {}'.format(node_id, node_status.num_workers_executing, node_status.num_workers, bool(node_status.num_workers_executing < node_status.num_workers)), extra={'timestamp':self._system_time.get_time()})
+            #print "global scheduler: node {} num of workers executing {} total num of workers {}".format(node_id, node_status.num_workers_executing, node_status.num_workers)
             if node_status.num_workers_executing < node_status.num_workers:
                 return node_id
         return None
@@ -233,14 +234,48 @@ class SimpleLocalScheduler(PassthroughLocalScheduler):
         PassthroughLocalScheduler.__init__(self, system_time, node_runtime, scheduler_db)
 
     def _schedule_locally(self, task):
-        if self._node_runtime.free_workers() > 0:
+        if self._node_runtime.free_workers() == 0:
             return False
-        print task.get_phase(0)
         for d_object_id in task.get_phase(0).depends_on:
             if not self._node_runtime.is_local(d_object_id):
                 return False
         self._node_runtime.send_to_dispatcher(task, 1)
         return True
+
+
+
+class ThresholdLocalScheduler(PassthroughLocalScheduler):
+    def __init__(self, time_source, node_runtime, scheduler_db):
+        PassthroughLocalScheduler.__init__(self, time_source, node_runtime, scheduler_db)
+
+    def _schedule_locally(self, task):
+        threshold2 = 3
+        if self._node_runtime.free_workers() > 0:
+            return False
+        print task.get_phase(0)
+        objects_transfer_size = 0
+        objects_status = {'local_ready' : 0, 'remote_ready' : 0, 'local_notready' : 0, 'remote_notready' : 0, 'no_info' : 0}
+        for d_object_id in task.get_phase(0).depends_on:
+            if not self._node_runtime.is_local(d_object_id):
+                objects_transfer_size = transfer_size + self._node_runtime.get_object_size(d_object_id)
+                #TODO: add to node_runtime the function get_object_size() which just return a value from the _object_store sizes map/dict.
+                object_status = self._node_runtime.get_object_status()
+                if object_status == ready :
+                    objects_status[remote_ready] += 1 
+                elif (object_status == scheduled and get_location(d_object_id) != self._node_runtime._node_id) :
+                    objects_status[local_notready] += 1
+        dispatcher_load = self._node_runtime.get_dispatch_queue_size()
+        #TODO: add to node_runtime the function get_dispatch_queue_size().
+        node_efficiency_rate = self._node_runtime.get_node_eff_rate()
+        #TODO: add to node_runtime the function get_node_eff_rate(). It will record a buffer in the form of list of task_start_time for the last 10 or 20 tasks (this will be a constant parameter) sent for execution on the node. The node efficiency rate will be the buffer size (whatever the constant is) divided by the (last_element-first_element) of the buffer.
+        local_load = dispatcher_load / node_efficiency_rate
+        task_load = objects_transfer_size 
+
+        if task_load > threshold2 :
+            return False
+        self._node_runtime.send_to_dispatcher(task, 1)
+        return True
+
 
 
 class BaseScheduler():

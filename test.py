@@ -164,10 +164,10 @@ class TestValidTrace(unittest.TestCase):
                 self._task_timing[t.task_id] = t
             self._timed_tasks = set()
 
-        def task_started(self, task_id, worker_id):
+        def task_started(self, task_id, node_id):
             self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._system_time.get_time())
 
-        def task_finished(self, task_id, worker_id):
+        def task_finished(self, task_id, node_id):
             self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._system_time.get_time())
             self._timed_tasks.add(task_id)
 
@@ -504,11 +504,11 @@ class TestNodeRuntime(unittest.TestCase):
             #    self._task_timing[t.task_id] = t
             #self._timed_tasks = set()
 
-        def task_started(self, task_id, worker_id):
+        def task_started(self, task_id, node_id):
             pass
             #self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._system_time.get_time())
 
-        def task_finished(self, task_id, worker_id):
+        def task_finished(self, task_id, node_id):
             pass
             #self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._system_time.get_time())
             #self._timed_tasks.add(task_id)

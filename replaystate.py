@@ -245,7 +245,7 @@ class NodeRuntime():
             self.phase_id = phase_id
 
     class TaskPhaseComplete():
-        def __init__(self, task_id, phase_id, worker_id):
+        def __init__(self, task_id, phase_id):
             self.task_id = task_id
             self.phase_id = phase_id
 
@@ -288,7 +288,7 @@ class NodeRuntime():
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
         for schedule_task in task_phase.submits:
             self._system_time.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
-        self._system_time.schedule_delayed(task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id, self.node_id)))
+        self._system_time.schedule_delayed(task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id)))
 
     def _internal_scheduler_schedule(self, task_id, phase_id):
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)

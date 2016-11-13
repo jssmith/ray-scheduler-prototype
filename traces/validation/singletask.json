@@ -4,11 +4,26 @@
     "numNodes": 1,
     "workersPerNode": 3,
     "transferTimeCost": 0,
+    "dbMessageDelay": 0,
     "taskTiming": [
       {
         "taskId": 1,
         "startTimestamp": 0,
         "endTimestamp": 1.0
+      }
+    ]
+  },
+  {
+    "scheduler": "trivial",
+    "numNodes": 1,
+    "workersPerNode": 3,
+    "transferTimeCost": 0,
+    "dbMessageDelay": 0.001,
+    "taskTiming": [
+      {
+        "taskId": 1,
+        "startTimestamp": 0.001,
+        "endTimestamp": 1.001
       }
     ]
   }

@@ -179,7 +179,7 @@ class TestValidTrace(unittest.TestCase):
         keys = frozenset(dict.keys())
         if keys == frozenset([u'taskId', 'startTimestamp', 'endTimestamp']):
             return TestValidTrace.TaskTiming(dict[u'taskId'], dict[u'startTimestamp'], dict[u'endTimestamp'])
-        if keys == frozenset([u'scheduler', u'numNodes', u'workersPerNode', u'transferTimeCost', u'taskTiming']):
+        if keys == frozenset([u'scheduler', u'numNodes', u'workersPerNode', u'transferTimeCost', u'dbMessageDelay', u'taskTiming']):
             return dict
         else:
             print "unexpected map in validation: {}".format(keys)
@@ -201,10 +201,11 @@ class TestValidTrace(unittest.TestCase):
             num_nodes = int(validation['numNodes'])
             num_workers_per_node = int(validation['workersPerNode'])
             transfer_time_cost = float(validation['transferTimeCost'])
+            db_message_delay = float(validation['dbMessageDelay'])
             system_time = replaystate.SystemTime()
             logger = TestValidTrace.ValidatingLogger(self, system_time, validation['taskTiming'])
             scheduler_type = schedulers[scheduler_str]
-            simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, transfer_time_cost)
+            simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
             logger.verify_all_finished()
 
 
@@ -249,7 +250,7 @@ class TestSchedulerObjects(unittest.TestCase):
         self.assertItemsEqual([RegisterNodeUpdate(node_id = 1, num_workers = 1)], [RegisterNodeUpdate(node_id = 1, num_workers = 1)])
 
 
-class TestReplayState(unittest.TestCase):
+class TestReplayStateBase(unittest.TestCase):
 
     def setUp(self):
         logging_format = '%(timestamp).6f %(name)s %(message)s'
@@ -263,8 +264,8 @@ class TestReplayState(unittest.TestCase):
         self.local_scheduler_updates_received = []
         self.global_scheduler_updates_received = []
 
-    def _setup_scheduler_db(self, computation, num_nodes, num_workers_per_node, transfer_time_cost):
-        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.event_loop, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost)
+    def _setup_scheduler_db(self, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay):
+        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.event_loop, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
         self.scheduler_db.get_global_scheduler_updates(lambda update: self.global_scheduler_updates_received.append(update))
         self.scheduler_db.get_local_scheduler_updates(0, lambda update: self.local_scheduler_updates_received.append(update))
         self.scheduler_db.schedule_root(0)
@@ -286,12 +287,16 @@ class TestReplayState(unittest.TestCase):
         self.assertEquals([], self.global_scheduler_updates_received)
         self.assertEquals([], self.local_scheduler_updates_received)
 
+
+class TestReplayState(TestReplayStateBase):
+
     def test_no_tasks(self):
         computation = ComputationDescription(root_task = None, tasks = [])
         num_nodes = 1
         num_workers_per_node = 1
         transfer_time_cost = 0
-        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost)
+        db_message_delay = 0
+        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
 
         global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node)]
         local_scheduler_updates_expected = []
@@ -306,7 +311,8 @@ class TestReplayState(unittest.TestCase):
         num_nodes = 1
         num_workers_per_node = 2
         transfer_time_cost = 0
-        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost)
+        db_message_delay = 0
+        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
 
         local_scheduler_updates_expected = [ScheduleTaskUpdate(task_0, 0)]
         global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node), ForwardTaskUpdate(task_0, 0, True)]
@@ -327,7 +333,8 @@ class TestReplayState(unittest.TestCase):
         num_nodes = 1
         num_workers_per_node = 2
         transfer_time_cost = 0
-        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost)
+        db_message_delay = 0
+        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
 
         local_scheduler_updates_expected = [ScheduleTaskUpdate(task_0, 0)]
         global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node),
@@ -341,7 +348,7 @@ class TestReplayState(unittest.TestCase):
             self._advance_check(100, (n + 1) * 100, [], [])
 
         self.assertEquals(1100, self.system_time.get_time())
-        self._advance_check(100, 1200, [], [FinishTaskUpdate(task_id = task_0.id())])
+        self._advance_check(101, 1201, [], [FinishTaskUpdate(task_id = task_0.id())])
 
         self._end_check()
 
@@ -359,7 +366,8 @@ class TestReplayState(unittest.TestCase):
         num_nodes = 1
         num_workers_per_node = 2
         transfer_time_cost = 0
-        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost)
+        db_message_delay = 0
+        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
 
         local_scheduler_updates_expected = [ScheduleTaskUpdate(task_0, 0)]
         global_scheduler_updates_expected = [RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node), ForwardTaskUpdate(task = task_0, submitting_node_id = 0, is_scheduled_locally = True)]
@@ -390,6 +398,36 @@ class TestReplayState(unittest.TestCase):
 
         self._end_check()
 
+
+class TestReplayStateTimingDetail(TestReplayStateBase):
+
+    def _setup_scheduler_db(self, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay):
+        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.event_loop, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+        self.scheduler_db.get_global_scheduler_updates(lambda update: self.global_scheduler_updates_received.append((self.system_time.get_time(), update)))
+        self.scheduler_db.get_local_scheduler_updates(0, lambda update: self.local_scheduler_updates_received.append((self.system_time.get_time(), update)))
+        self.scheduler_db.schedule_root(0)
+
+    def testMessageDelay(self):
+        phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
+        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100)])
+        computation = ComputationDescription(root_task = 1, tasks = [task_0])
+        num_nodes = 1
+        num_workers_per_node = 2
+        transfer_time_cost = 0
+        db_message_delay = 0.001
+        self._setup_scheduler_db(computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+
+        local_scheduler_updates_expected = [(0.001, ScheduleTaskUpdate(task_0, 0))]
+        global_scheduler_updates_expected = [(0.001, RegisterNodeUpdate(node_id = 0, num_workers = num_workers_per_node)), (0.001, ForwardTaskUpdate(task_0, 0, True))]
+        self._advance_check(10, 10, local_scheduler_updates_expected, global_scheduler_updates_expected)
+        self._end_check()
+
+        self.system_time.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
+
+        local_scheduler_updates_expected = []
+        global_scheduler_updates_expected = [(11.001, FinishTaskUpdate(task_id = task_0.id()))]
+        self._advance_check(10, 20, local_scheduler_updates_expected, global_scheduler_updates_expected)
+        self._end_check()
 
 class TestObjectStoreRuntime(unittest.TestCase):
 
@@ -572,7 +610,6 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertItemsEqual([], self.updates)
 
-
     def test_one_task_with_phases(self):
         phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
         phase_0_1 = TaskPhase(phase_id = 1, depends_on = [], submits = [], duration = 1.5)
@@ -611,7 +648,6 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.node_runtime.send_to_dispatcher(task_0, 0)
 
-
         self._advance()
 
         self.assertItemsEqual([(1.0, FinishTaskUpdate(task_0.id()))], self.updates)
@@ -623,7 +659,6 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertItemsEqual([], self.updates)
         self.assertItemsEqual([], self.objects_added)
-
 
     def test_task_submit(self):
         phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
@@ -723,8 +758,6 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
         self.assertItemsEqual([(3.2, FinishTaskUpdate(task_0.id()))], self.updates)
 
-
-
     def test_multiple_dependencies(self):
         phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [TaskSubmit(task_id = 2,time_offset = 0.4), TaskSubmit(task_id = 3,time_offset = 0.4)], duration = 0.9)
         phase_0_1 = TaskPhase(phase_id = 1, depends_on = [1, 2], submits = [], duration = 0.8)
@@ -760,10 +793,12 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
         self.assertItemsEqual([(4.2, FinishTaskUpdate(task_0.id()))], self.updates)
 
+
 if __name__ == '__main__':
     tests = unittest.TestSuite([invalid_trace_suite(), valid_trace_suite()] +
                 list(map(lambda x: unittest.TestLoader().loadTestsFromTestCase(x),
                 [TestEventLoopTimers, TestComputationObjects, TestSchedulerObjects,
-                 TestReplayState, TestObjectStoreRuntime, TestNodeRuntime])))
+                 TestReplayState, TestObjectStoreRuntime, TestNodeRuntime,
+                 TestReplayStateTimingDetail])))
     unittest.TextTestRunner(verbosity=2).run(tests)
     

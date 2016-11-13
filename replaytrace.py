@@ -12,13 +12,13 @@ schedulers = {
 }
 
 def usage():
-    print 'Usage: test_scheduler num_nodes num_workers_per_node transfer_time_cost scheduler input.json'
+    print 'Usage: test_scheduler num_nodes num_workers_per_node object_transfer_time_cost db_message_delay scheduler input.json'
 
 
-def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, transfer_time_cost):
+def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay):
     event_loop = replaystate.EventLoop(system_time)
-    object_store = replaystate.ObjectStoreRuntime(system_time, transfer_time_cost)
-    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, logger, computation, num_nodes, num_workers_per_node, transfer_time_cost)
+    object_store = replaystate.ObjectStoreRuntime(system_time, object_transfer_time_cost)
+    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
     schedulers = scheduler_type(system_time, scheduler_db)
     global_scheduler = schedulers.get_global_scheduler()
     local_schedulers = {}
@@ -36,19 +36,20 @@ def setup_logging():
 def run_replay(args):
     setup_logging()
 
-    if len(args) != 6:
+    if len(args) != 7:
         usage()
         sys.exit(1)
 
     num_nodes = int(args[1])
     num_workers_per_node = int(args[2])
-    transfer_time_cost = float(args[3])
-    scheduler_str = args[4]
+    object_transfer_time_cost = float(args[3])
+    db_message_delay = float(args[4])
+    scheduler_str = args[5]
     if scheduler_str not in schedulers.keys():
         usage()
         print 'Error - unrecognized scheduler'
         sys.exit(1)
-    input_fn = args[5]
+    input_fn = args[6]
     print input_fn
     f = open(input_fn, 'r')
     computation = json.load(f, object_hook=replaystate.computation_decoder)
@@ -56,7 +57,7 @@ def run_replay(args):
 
     system_time = replaystate.SystemTime()
     logger = replaystate.PrintingLogger(system_time)
-    simulate(computation, schedulers[scheduler_str], system_time, logger, num_nodes, num_workers_per_node, transfer_time_cost)
+    simulate(computation, schedulers[scheduler_str], system_time, logger, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
 
 
 if __name__ == '__main__':

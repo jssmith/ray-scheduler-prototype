@@ -4,6 +4,7 @@
     "numNodes": 1,
     "workersPerNode": 3,
     "transferTimeCost": 0,
+    "dbMessageDelay": 0,
     "taskTiming": [
       {
         "taskId": 1,

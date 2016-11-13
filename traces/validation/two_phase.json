@@ -4,6 +4,7 @@
     "numNodes": 1,
     "workersPerNode": 3,
     "transferTimeCost": 0,
+    "dbMessageDelay": 0,
     "taskTiming": [
       {
         "taskId": 1,
@@ -14,6 +15,44 @@
         "taskId": 2,
         "startTimestamp": 0.1,
         "endTimestamp": 2.1
+      }
+    ]
+  },
+  {
+    "scheduler": "trivial",
+    "numNodes": 1,
+    "workersPerNode": 3,
+    "transferTimeCost": 0,
+    "dbMessageDelay": 0.001,
+    "taskTiming": [
+      {
+        "taskId": 1,
+        "startTimestamp": 0.001,
+        "endTimestamp": 1.001
+      },
+      {
+        "taskId": 2,
+        "startTimestamp": 0.103,
+        "endTimestamp": 2.103
+      }
+    ]
+  },
+  {
+    "scheduler": "trivial_local",
+    "numNodes": 1,
+    "workersPerNode": 3,
+    "transferTimeCost": 0,
+    "dbMessageDelay": 0.001,
+    "taskTiming": [
+      {
+        "taskId": 1,
+        "startTimestamp": 0.001,
+        "endTimestamp": 1.001
+      },
+      {
+        "taskId": 2,
+        "startTimestamp": 0.101,
+        "endTimestamp": 2.101
       }
     ]
   }

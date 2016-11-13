@@ -19,7 +19,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self.replay_scheduler_database = replay_scheduler_database
             self.update = update
 
-    def __init__(self, time_source, event_loop, logger, computation, num_nodes, num_workers_per_node, data_transfer_time_cost):
+    def __init__(self, time_source, event_loop, logger, computation, num_nodes, num_workers_per_node, data_transfer_time_cost, db_message_delay):
         self._pylogger = logging.getLogger(__name__+'.ReplaySchedulerDatabase')
 
         self._system_time = time_source
@@ -27,6 +27,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         self._logger = logger
         self._computation = computation
         self._data_transfer_time_cost = data_transfer_time_cost
+        self._db_message_delay = db_message_delay
 
         self._global_scheduler_update_handlers = []
         self._local_scheduler_update_handlers = defaultdict(list)
@@ -80,7 +81,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
     def _yield_global_scheduler_update(self, update):
         self._pylogger.debug('sending update to global scheduler: {}'.format(str(update)), extra={'timestamp':self._system_time.get_time()})
         for handler in self._global_scheduler_update_handlers:
-            handler(update)
+            self._system_time.schedule_delayed(self._db_message_delay, lambda handler=handler:handler(update))
 
     def _yield_local_scheduler_update(self, update):
         self._pylogger.debug('sending update to node {} local scheduler: {}'.format(str(update.node_id), str(update)), extra={'timestamp':self._system_time.get_time()})
@@ -88,7 +89,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
 #        print "lsh" + str(self._local_scheduler_update_handlers)
         for handler in self._local_scheduler_update_handlers[str(update.node_id)]:
 #            print "SDB sending update {} to node {}".format(update, update.node_id)
-            self._system_time.schedule_immediate(lambda: handler(update))
+            self._system_time.schedule_delayed(self._db_message_delay, lambda handler=handler: handler(update))
 
     def schedule(self, node_id, task_id):
 #        print("State DB received request to schedule task {} on node {}".format(task_id, node_id))

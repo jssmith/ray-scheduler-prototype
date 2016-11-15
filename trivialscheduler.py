@@ -139,7 +139,8 @@ class BaseGlobalScheduler():
 
     def _process_tasks(self):
 #        print "global scheduler processing tasks, runnable number {} | {}".format(len(self._state.runnable_tasks), self._state.runnable_tasks)
-        for task_id in self._state.runnable_tasks:
+        runnable_tasks = self._state.runnable_tasks[:]
+        for task_id in runnable_tasks:
             node_id = self._select_node(task_id)
 #            print "process tasks got node id {} for task id {}".format(node_id, task_id)
 
@@ -166,8 +167,16 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db)
 
     def _select_node(self, task_id):
+        self._pylogger.debug("Runnable tasks are {}, checking task {}".format(
+            ', '.join(self._state.runnable_tasks),
+            task_id),
+            extra={'timestamp':self._system_time.get_time()})
         for node_id, node_status in self._state.nodes.items():
-            self._pylogger.debug('can we schedule on node {}? {} < {} so {}'.format(node_id, node_status.num_workers_executing, node_status.num_workers, bool(node_status.num_workers_executing < node_status.num_workers)), extra={'timestamp':self._system_time.get_time()})
+            self._pylogger.debug("can we schedule task {} on node {}? {} < {} so {}".format(
+                task_id, node_id, node_status.num_workers_executing,
+                node_status.num_workers,
+                bool(node_status.num_workers_executing < node_status.num_workers)),
+                extra={'timestamp':self._system_time.get_time()})
             #print "global scheduler: node {} num of workers executing {} total num of workers {}".format(node_id, node_status.num_workers_executing, node_status.num_workers)
             if node_status.num_workers_executing < node_status.num_workers:
                 return node_id

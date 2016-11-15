@@ -8,11 +8,13 @@ import logging
 schedulers = {
     'trivial' : TrivialScheduler,
     'location_aware' : LocationAwareScheduler,
+    'transfer_aware' : TransferCostAwareScheduler,
     'trivial_local' : TrivialLocalScheduler
 }
 
 def usage():
     print 'Usage: test_scheduler num_nodes num_workers_per_node object_transfer_time_cost db_message_delay scheduler input.json'
+    print 'Available schedulers: '; print schedulers.keys()
 
 
 def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay):

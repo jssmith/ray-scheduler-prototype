@@ -456,6 +456,11 @@ class ComputationDescription():
         # no dependencies that don't get created
         result_objects = set()
         for task in tasks:
+            for phase_id in range(0, task.num_phases()):
+                for object_put in task.get_phase(phase_id).creates:
+                    if object_put.object_id in result_objects:
+                        raise ValidationError('Duplicate put object id {}'.format(object_id))
+                    result_objects.add(object_put.object_id)
             for task_result in task.get_results():
                 object_id = task_result.object_id
                 if object_id in result_objects:

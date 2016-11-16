@@ -29,20 +29,16 @@ def parse_json_dir(log_dir):
 # that produced it. The second has key task, value list of object ids that it
 # depends on.
 def build_dependencies(event_logs):
-    object_dependencies = {}
     task_dependencies = {}
     for event_log in event_logs:
         for event in event_log:
             if event['event'] != 'SCHEDULE':
                 continue
-            object_ids = event['returns']
-            for object_id in object_ids:
-                object_dependencies[object_id] = event['taskId']
             task_dependencies[event['taskId']] = event['dependsOn']
-    return object_dependencies, task_dependencies
+    return task_dependencies
 
 
-def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
+def build_tasks(task_dependencies, event_log, task_roots):
     tasks = []
     phases = []
 
@@ -169,8 +165,8 @@ if __name__ == '__main__':
                                                                  trace_filename)
 
     event_logs = parse_json_dir(log_dir)
-    obj_dependencies, task_dependencies = build_dependencies(event_logs)
+    task_dependencies = build_dependencies(event_logs)
     task_roots, tasks = [], []
     for event_log in event_logs:
-        tasks += build_tasks(obj_dependencies, task_dependencies, event_log, task_roots)
+        tasks += build_tasks(task_dependencies, event_log, task_roots)
     dump_tasks(task_roots, tasks, trace_filename)

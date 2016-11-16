@@ -19,11 +19,10 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self.replay_scheduler_database = replay_scheduler_database
             self.update = update
 
-    def __init__(self, time_source, event_loop, logger, computation, num_nodes, num_workers_per_node, data_transfer_time_cost, db_message_delay):
+    def __init__(self, time_source, logger, computation, num_nodes, num_workers_per_node, data_transfer_time_cost, db_message_delay):
         self._pylogger = logging.getLogger(__name__+'.ReplaySchedulerDatabase')
 
         self._system_time = time_source
-        self._event_loop = event_loop
         self._logger = logger
         self._computation = computation
         self._data_transfer_time_cost = data_transfer_time_cost
@@ -364,6 +363,10 @@ class SystemTime():
             scheduled()
         return len(self._scheduled) > 0
 
+    def advance_fully(self):
+        while self.advance():
+            pass
+
     def queue_empty(self):
         return not self._scheduled
 
@@ -378,7 +381,6 @@ class EventLoop():
     def __init__(self, timesource):
         self._system_time = timesource
         self._timer_id_seq = 1
-        self.is_stopped = True
         self._timers = {}
 
     def timer_handler(self, context):
@@ -400,21 +402,6 @@ class EventLoop():
         if timer_id not in self._timers.keys():
             raise RuntimeError('Timer is not active')
         self._timers[timer_id].is_cancelled = True
-
-    def run(self):
-        if not self.is_stopped:
-            raise RuntimeError('Event loop already running')
-        self.is_stopped = False
-        while self._system_time.advance() and not self.is_stopped:
-            pass
-        self.is_stopped = True
-
-    def run_until(self, delta):
-        self.add_timer(delta, lambda _: self.stop(), None)
-        self.run()
-
-    def stop(self):
-        self.is_stopped = True
 
 
 ################################################################

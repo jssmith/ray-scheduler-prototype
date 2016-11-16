@@ -17,17 +17,17 @@ def usage():
 
 
 def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay):
-    event_loop = replaystate.EventLoop(system_time)
     object_store = replaystate.ObjectStoreRuntime(system_time, object_transfer_time_cost)
-    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, event_loop, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
+    scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
     schedulers = scheduler_type(system_time, scheduler_db)
-    global_scheduler = schedulers.get_global_scheduler()
+    global_scheduler = schedulers.get_global_scheduler(replaystate.EventLoop(system_time))
     local_schedulers = {}
     for node_id in range(0, num_nodes):
         local_runtime = replaystate.NodeRuntime(system_time, object_store, logger, computation, node_id, num_workers_per_node)
-        local_schedulers[node_id] = schedulers.get_local_scheduler(local_runtime)
+        local_event_loop = replaystate.EventLoop(system_time)
+        local_schedulers[node_id] = schedulers.get_local_scheduler(local_runtime, local_event_loop)
     scheduler_db.schedule_root(0)
-    event_loop.run()
+    system_time.advance_fully()
 
 def setup_logging():
     logging_format = '%(timestamp).6f %(name)s %(message)s'

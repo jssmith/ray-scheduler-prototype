@@ -21,7 +21,10 @@ class TestEventLoopTimers(unittest.TestCase):
             self.test = test
             self.did_execute = False
             self.ts_expected = ts_expected
+            self.ts_executed = None
             test.callback_contexts.append(self)
+        def __str__(self):
+            return "CallbackContext({},{},{})".format(self.test, self.did_execute, self.ts_executed, self.ts_expected)
 
     @staticmethod
     def basic_handler(context):
@@ -45,15 +48,13 @@ class TestEventLoopTimers(unittest.TestCase):
 
     def test_no_events(self):
         start_time = self.ts.get_time()
-        self.assertTrue(self.event_loop.is_stopped)
-        self.event_loop.run()
-        self.assertTrue(self.event_loop.is_stopped)
+        self.ts.advance_fully()
         self.assertEquals(start_time, self.ts.get_time())
 
     def test_one_event(self):
         start_time = self.ts.get_time()
         self.event_loop.add_timer(2, TestEventLoopTimers.basic_handler, TestEventLoopTimers.CallbackContext(self, start_time + 2))
-        self.event_loop.run()
+        self.ts.advance_fully()
         self.check_all_executed()
         self.assertEquals(start_time + 2, self.ts.get_time())
 
@@ -61,53 +62,45 @@ class TestEventLoopTimers(unittest.TestCase):
         start_time = self.ts.get_time()
         self.event_loop.add_timer(5, TestEventLoopTimers.basic_handler, TestEventLoopTimers.CallbackContext(self, start_time + 5))
         self.event_loop.add_timer(2, TestEventLoopTimers.basic_handler, TestEventLoopTimers.CallbackContext(self, start_time + 2))
-        self.event_loop.run()
+        self.ts.advance_fully()
         self.check_all_executed()
         self.assertEquals(start_time + 5, self.ts.get_time())
 
     def test_chained_events(self):
         start_time = self.ts.get_time()
-        self.assertTrue(self.event_loop.is_stopped)
         def callback_action():
-            self.assertFalse(self.event_loop.is_stopped)
             self.event_loop.add_timer(5, TestEventLoopTimers.basic_handler, TestEventLoopTimers.CallbackContext(self, start_time + 7))
         self.event_loop.add_timer(2, TestEventLoopTimers.active_handler, TestEventLoopTimers.ActiveCallback(self, start_time + 2, callback_action))
-        self.event_loop.run()
-        self.assertTrue(self.event_loop.is_stopped)
+        self.ts.advance_fully()
         self.check_all_executed()
         self.assertEquals(start_time + 7, self.ts.get_time())
 
     def test_one_event_cancelled(self):
         start_time = self.ts.get_time()
 
-        def callback_action():
-            self.fail('should not have called this')
-
-        callback = TestEventLoopTimers.ActiveCallback(self, start_time + 2, callback_action)
-        timer_id = self.event_loop.add_timer(2, TestEventLoopTimers.active_handler, callback)
-        self.event_loop.remove_timer(timer_id)
-        self.event_loop.run()
-        # TODO - not sure that cancelled event should advance the clock, but right now it does
-        self.assertEquals(start_time + 2, self.ts.get_time())
-
-    def test_cancel_future(self):
-        start_time = self.ts.get_time()
-
         def failure_action():
             self.fail('should not have called this')
 
+        # remove the timer before advancing
+        callback = TestEventLoopTimers.ActiveCallback(self, start_time + 2, failure_action)
+        timer_id = self.event_loop.add_timer(2, TestEventLoopTimers.active_handler, callback)
+        self.event_loop.remove_timer(timer_id)
+        self.ts.advance_fully()
+        self.assertEquals(start_time + 2, self.ts.get_time())
+        self.assertFalse(callback.did_execute)
+
+        # cancel during the advance by scheduling another callback
+        start_time = self.ts.get_time()
         callback_ts_5 = TestEventLoopTimers.ActiveCallback(self, start_time + 5, failure_action)
         timer_id_ts_5 = self.event_loop.add_timer(5, TestEventLoopTimers.active_handler, callback_ts_5)
 
         def cancel_action():
             self.event_loop.remove_timer(timer_id_ts_5)
-
         callback_ts_2 = TestEventLoopTimers.ActiveCallback(self, start_time + 2, cancel_action)
         self.event_loop.add_timer(2, TestEventLoopTimers.active_handler, callback_ts_2)
-        self.event_loop.run()
-        self.assertFalse(self.callback_contexts[0].did_execute)
-        self.assertTrue(self.callback_contexts[1].did_execute)
-        # TODO - not sure that cancelled event should advance the clock, but right now it does
+        self.ts.advance_fully()
+        self.assertFalse(callback_ts_5.did_execute)
+        self.assertTrue(callback_ts_2.did_execute)
         self.assertEquals(start_time + 5, self.ts.get_time())
 
 
@@ -266,7 +259,7 @@ class TestReplayStateBase(unittest.TestCase):
         self.global_scheduler_updates_received = []
 
     def _setup_scheduler_db(self, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay):
-        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.event_loop, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
         self.scheduler_db.get_global_scheduler_updates(lambda update: self.global_scheduler_updates_received.append(update))
         self.scheduler_db.get_local_scheduler_updates(0, lambda update: self.local_scheduler_updates_received.append(update))
         self.scheduler_db.schedule_root(0)
@@ -274,16 +267,25 @@ class TestReplayStateBase(unittest.TestCase):
     def _advance_check(self, delta, end_ts_expected, local_scheduler_updates_expected, global_scheduler_updates_expected):
         self.local_scheduler_updates_received = []
         self.global_scheduler_updates_received = []
-        self.event_loop.run_until(delta)
+        self._advance_until(delta)
         self.assertEquals(end_ts_expected, self.system_time.get_time())
         self.assertItemsEqual(global_scheduler_updates_expected, self.global_scheduler_updates_received)
         self.assertItemsEqual(local_scheduler_updates_expected, self.local_scheduler_updates_received)
+
+    def _stop_advance(self):
+        self.continue_advance = False
+
+    def _advance_until(self, delta):
+        self.continue_advance = True
+        self.system_time.schedule_delayed(delta, lambda: self._stop_advance())
+        while self.continue_advance and self.system_time.advance():
+            pass
 
     def _end_check(self):
         start_time = self.system_time.get_time()
         self.local_scheduler_updates_received = []
         self.global_scheduler_updates_received = []
-        self.event_loop.run()
+        self.system_time.advance_fully()
         self.assertEquals(start_time, self.system_time.get_time())
         self.assertEquals([], self.global_scheduler_updates_received)
         self.assertEquals([], self.local_scheduler_updates_received)
@@ -403,7 +405,7 @@ class TestReplayState(TestReplayStateBase):
 class TestReplayStateTimingDetail(TestReplayStateBase):
 
     def _setup_scheduler_db(self, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay):
-        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.event_loop, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
         self.scheduler_db.get_global_scheduler_updates(lambda update: self.global_scheduler_updates_received.append((self.system_time.get_time(), update)))
         self.scheduler_db.get_local_scheduler_updates(0, lambda update: self.local_scheduler_updates_received.append((self.system_time.get_time(), update)))
         self.scheduler_db.schedule_root(0)

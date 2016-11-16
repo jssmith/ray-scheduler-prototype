@@ -210,9 +210,10 @@ class LocationAwareGlobalScheduler(BaseGlobalScheduler):
 
 class DelayGlobalScheduler(BaseGlobalScheduler):
 
-    def __init__(self, system_time, scheduler_db):
+    def __init__(self, system_time, scheduler_db, event_loop):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db)
         self._pylogger = logging.getLogger(__name__+'.DelayGlobalScheduler')
+        self._event_loop = event_loop
         self._WaitingInfo = namedtuple('WaitingInfo', ['node_id', 'start_waiting_time', 'expiration_time'])
         self._waiting_tasks = OrderedDict()
         self._max_delay = 1
@@ -263,10 +264,12 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
                         best_node_id,
                         self._system_time.get_time(),
                         self._system_time.get_time() + self._max_delay)
-                    self._system_time.schedule_delayed(self._max_delay,
-                        lambda task_id=task_id: self._wait_expired(task_id))
+                    self._event_loop.add_timer(self._max_delay,
+                        DelayGlobalScheduler._wait_expired, (self, task_id))
 
-    def _wait_expired(self, task_id):
+    @staticmethod
+    def _wait_expired(context):
+        (self, task_id) = context
         if task_id in self._waiting_tasks.keys():
             # trivial scheduler algorithm, place anywhere available
             for node_id, node_status in sorted(self._state.nodes.items()):
@@ -371,21 +374,21 @@ class BaseScheduler():
         self._global_scheduler = None
         self._local_schedulers = {}
 
-    def get_global_scheduler(self):
+    def get_global_scheduler(self, event_loop):
         if not self._global_scheduler:
-            self._global_scheduler = self._make_global_scheduler()
+            self._global_scheduler = self._make_global_scheduler(event_loop)
         return self._global_scheduler
 
-    def get_local_scheduler(self, node_runtime):
+    def get_local_scheduler(self, node_runtime, event_loop):
         node_id = node_runtime.node_id
         if node_id not in self._local_schedulers.keys():
-            self._local_schedulers[node_id] = self._make_local_scheduler(node_runtime)
+            self._local_schedulers[node_id] = self._make_local_scheduler(node_runtime, event_loop)
         return self._local_schedulers[node_id]
 
-    def _make_global_scheduler(self):
+    def _make_global_scheduler(self, event_loop):
         raise NotImplementedError()
 
-    def _make_local_scheduler(self, node_runtime):
+    def _make_local_scheduler(self, node_runtime, event_loop):
         return PassthroughLocalScheduler(self._system_time, node_runtime, self._scheduler_db)
 
 
@@ -393,7 +396,7 @@ class TrivialScheduler(BaseScheduler):
     def __init__(self, system_time, scheduler_db):
         BaseScheduler.__init__(self, system_time, scheduler_db)
 
-    def _make_global_scheduler(self):
+    def _make_global_scheduler(self, event_loop):
         return TrivialGlobalScheduler(self._system_time, self._scheduler_db)
 
 
@@ -402,7 +405,7 @@ class LocationAwareScheduler(BaseScheduler):
     def __init__(self, system_time, scheduler_db):
         BaseScheduler.__init__(self, system_time, scheduler_db)
 
-    def _make_global_scheduler(self):
+    def _make_global_scheduler(self, event_loop):
         return LocationAwareGlobalScheduler(self._system_time, self._scheduler_db)
 
 
@@ -411,8 +414,8 @@ class DelayScheduler(BaseScheduler):
     def __init__(self, system_time, scheduler_db):
         BaseScheduler.__init__(self, system_time, scheduler_db)
 
-    def _make_global_scheduler(self):
-        return DelayGlobalScheduler(self._system_time, self._scheduler_db)
+    def _make_global_scheduler(self, event_loop):
+        return DelayGlobalScheduler(self._system_time, self._scheduler_db, event_loop)
 
 
 class TrivialLocalScheduler(TrivialScheduler):
@@ -420,5 +423,5 @@ class TrivialLocalScheduler(TrivialScheduler):
     def __init__(self, system_time, scheduler_db):
         TrivialScheduler.__init__(self, system_time, scheduler_db)
 
-    def _make_local_scheduler(self, node_runtime):
+    def _make_local_scheduler(self, node_runtime, event_loop):
         return SimpleLocalScheduler(self._system_time, node_runtime, self._scheduler_db)

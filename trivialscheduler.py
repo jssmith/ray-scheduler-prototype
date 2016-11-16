@@ -171,7 +171,7 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
             ', '.join(self._state.runnable_tasks),
             task_id),
             extra={'timestamp':self._system_time.get_time()})
-        for node_id, node_status in self._state.nodes.items():
+        for node_id, node_status in sorted(self._state.nodes.items()):
             self._pylogger.debug("can we schedule task {} on node {}? {} < {} so {}".format(
                 task_id, node_id, node_status.num_workers_executing,
                 node_status.num_workers,
@@ -194,7 +194,7 @@ class LocationAwareGlobalScheduler(BaseGlobalScheduler):
         best_cost = sys.maxint
         # TODO short-circuit cost computation if there are no dependencies.
         #      also may optimize lookup strategy for one or two dependencies.
-        for (node_id, node_status) in self._state.nodes.items():
+        for (node_id, node_status) in sorted(self._state.nodes.items()):
             if node_status.num_workers_executing < node_status.num_workers:
                 cost = 0
                 for depends_on in task_deps:

@@ -207,7 +207,6 @@ class LocationAwareGlobalScheduler(BaseGlobalScheduler):
                     best_node_id = node_id
         return best_node_id
 
-
 class DelayGlobalScheduler(BaseGlobalScheduler):
 
     def __init__(self, system_time, scheduler_db, event_loop):
@@ -283,6 +282,29 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
             self._pylogger.debug("delay exceeded but no nodes available, unable to schedule task {}".format(
                 task_id),
                 extra={'timestamp':self._system_time.get_time()})
+
+class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
+
+    def __init__(self, system_time, scheduler_db):
+        BaseGlobalScheduler.__init__(self, system_time, scheduler_db)
+
+    def _select_node(self, task_id):
+        #leave this same as location aware for now
+        task_deps = self._state.tasks[task_id].get_depends_on()
+        best_node_id = None
+        best_cost = sys.maxint
+        # TODO short-circuit cost computation if there are no dependencies.
+        #      also may optimize lookup strategy for one or two dependencies.
+        for (node_id, node_status) in self._state.nodes.items():
+            if node_status.num_workers_executing < node_status.num_workers:
+                cost = 0
+                for depends_on in task_deps:
+                    if not self._state.object_ready(depends_on, node_id):
+                        cost += 1
+                if cost < best_cost:
+                    best_cost = cost
+                    best_node_id = node_id
+        return best_node_id
 
 
 class PassthroughLocalScheduler():
@@ -366,7 +388,6 @@ class ThresholdLocalScheduler(PassthroughLocalScheduler):
         return True
 
 
-
 class BaseScheduler():
     def __init__(self, system_time, scheduler_db):
         self._system_time = system_time
@@ -407,6 +428,14 @@ class LocationAwareScheduler(BaseScheduler):
 
     def _make_global_scheduler(self, event_loop):
         return LocationAwareGlobalScheduler(self._system_time, self._scheduler_db)
+
+class TransferCostAwareScheduler(BaseScheduler):
+
+    def __init__(self, system_time, scheduler_db):
+        BaseScheduler.__init__(self, system_time, scheduler_db)
+
+    def _make_global_scheduler(self):
+        return TransferCostAwareGlobalScheduler(self._system_time, self._scheduler_db)
 
 
 class DelayScheduler(BaseScheduler):

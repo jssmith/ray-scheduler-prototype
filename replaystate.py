@@ -287,6 +287,11 @@ class NodeRuntime():
     def _execute_phase_immediate(self, task_id, phase_id):
         self._pylogger.debug('executing task {} phase {}'.format(task_id, phase_id), extra={'timestamp':self._system_time.get_time()})
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
+        for put_event in task_phase.creates:
+            self._system_time.schedule_delayed(
+                    put_event.time_offset,
+                    lambda: self._object_store.add_object(put_event.object_id, self.node_id, put_event.size)
+                    )
         for schedule_task in task_phase.submits:
             self._system_time.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
         self._system_time.schedule_delayed(task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id)))
@@ -578,6 +583,20 @@ class TaskSubmit():
         self.time_offset = time_offset
 
 
+class ObjectPut():
+    def __init__(self, object_id, size, time_offset):
+        object_id_str = str(object_id)
+        if not object_id_str:
+            raise ValidationError('TaskResult: no object id')
+        if size < 0:
+            raise ValidationError('TaskResult: invalid size - {}'.format(size))
+
+        # verification passed so initialize
+        self.object_id = object_id_str
+        self.size = size
+        self.time_offset = time_offset
+
+
 class DirectedGraph():
     def __init__(self):
         self._id_ct = 0
@@ -656,13 +675,15 @@ def computation_decoder(dict):
     if keys == frozenset([u'timeOffset', 'taskId']):
         return TaskSubmit(dict[u'taskId'], dict[u'timeOffset'])
     if keys == frozenset([u'duration', u'phaseId', u'submits', u'dependsOn', u'creates']):
-        return TaskPhase(dict[u'phaseId'], dict[u'dependsOn'], dict[u'submits'], dict[u'duration'], u'creates')
+        return TaskPhase(dict[u'phaseId'], dict[u'dependsOn'], dict[u'submits'], dict[u'duration'], dict[u'creates'])
     if keys == frozenset([u'phases', u'results', u'taskId']):
         return Task(dict[u'taskId'], dict[u'phases'], dict[u'results'])
     if keys == frozenset([u'tasks', u'rootTask']):
         return ComputationDescription(dict[u'rootTask'], dict[u'tasks'])
     if keys == frozenset([u'objectId', u'size']):
         return TaskResult(dict[u'objectId'], int(dict[u'size']))
+    if keys == frozenset([u'objectId', u'size', u'timeOffset']):
+        return ObjectPut(dict[u'objectId'], int(dict[u'size']), dict[u'timeOffset'])
     else:
         print "unexpected map: {}".format(keys)
         sys.exit(1)

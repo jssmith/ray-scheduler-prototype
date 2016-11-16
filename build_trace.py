@@ -110,6 +110,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
             creates.append({
                 'objectId': event['objectId'],
                 'size': event['size'],
+                'timeOffset': event['time'] - cur_time,
                 })
         elif event_type == 'DRIVER_END':
             if not is_driver:

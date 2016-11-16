@@ -1,6 +1,7 @@
 import unittest
 import os
 import logging
+from collections import namedtuple
 
 # TODO both of these needed?
 import replaystate
@@ -499,6 +500,9 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self.assertEquals([0.4], self._last_ready('2', 0))
 
 
+# TODO(swang): Some helper functions to build object additions.
+ObjectAddition = namedtuple('ObjectAddition', ['time_offset', 'object_id', 'node_id', 'object_size'])
+
 class TestNodeRuntime(unittest.TestCase):
 
     class ObjectStore():
@@ -515,7 +519,12 @@ class TestNodeRuntime(unittest.TestCase):
                 self._system_time.schedule_immediate(handler)
 
         def add_object(self, object_id, node_id, object_size):
-            self._test.objects_added.append((self._system_time.get_time(), object_id, node_id, object_size))
+            self._test.objects_added.append(
+                    ObjectAddition(
+                        self._system_time.get_time(),
+                        object_id, node_id, object_size
+                        )
+                    )
 
         def get_locations(self, object_id):
             raise NotImplementedError()
@@ -586,7 +595,8 @@ class TestNodeRuntime(unittest.TestCase):
 
     def test_one_task(self):
         phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
-        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 0, size = 100)])
+        task_0_result = TaskResult(object_id = 0, size = 100)
+        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [task_0_result])
         computation = ComputationDescription(root_task = 1, tasks = [task_0])
         node_id = 1
         num_workers = 2
@@ -603,7 +613,12 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertItemsEqual([(0.5, 1)], self.free_workers)
         self.assertItemsEqual([(1.0, FinishTaskUpdate(task_0.id()))], self.updates)
-        self.assertItemsEqual([(1.0, '0', 1, 100)], self.objects_added)
+        task_0_result_addition = ObjectAddition(
+                phase_0_0.duration,
+                task_0_result.object_id,
+                node_id,
+                task_0_result.size)
+        self.assertItemsEqual([task_0_result_addition], self.objects_added)
 
         self.updates = []
         self._advance()
@@ -614,7 +629,8 @@ class TestNodeRuntime(unittest.TestCase):
         put_event = ObjectPut(0, 100, 0.5)
         phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [],
                               duration = 1.0, creates=[put_event])
-        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [TaskResult(object_id = 1, size = 200)])
+        task_0_result = TaskResult(object_id = 1, size = 200)
+        task_0 = Task(task_id = 1, phases = [phase_0_0], results = [task_0_result])
         computation = ComputationDescription(root_task = 1, tasks = [task_0])
         node_id = 1
         num_workers = 2
@@ -631,7 +647,19 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertItemsEqual([(0.5, 1)], self.free_workers)
         self.assertItemsEqual([(1.0, FinishTaskUpdate(task_0.id()))], self.updates)
-        self.assertItemsEqual([(0.5, '0', 1, 100), (1.0, '1', 1, 200)], self.objects_added)
+        put_addition = ObjectAddition(
+                put_event.time_offset,
+                put_event.object_id,
+                node_id,
+                put_event.size
+                )
+        task_0_result_addition = ObjectAddition(
+                phase_0_0.duration,
+                task_0_result.object_id,
+                node_id,
+                task_0_result.size)
+        self.assertItemsEqual([put_addition, task_0_result_addition],
+                              self.objects_added)
 
         self.updates = []
         self._advance()
@@ -662,7 +690,10 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertItemsEqual([(2.0, 1)], self.free_workers)
         self.assertItemsEqual([(2.5, FinishTaskUpdate(task_0.id()))], self.updates)
-        self.assertItemsEqual([(0.5, '0', 1, 100), (1.5, '1', 1, 200), (2.5, '2', 1, 300)], self.objects_added)
+        self.assertItemsEqual([ObjectAddition(0.5, '0', 1, 100),
+                               ObjectAddition(1.5, '1', 1, 200),
+                               ObjectAddition(2.5, '2', 1, 300)],
+                              self.objects_added)
 
         self.updates = []
         self._advance()
@@ -689,7 +720,8 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertItemsEqual([(2.0, 1)], self.free_workers)
         self.assertItemsEqual([(2.5, FinishTaskUpdate(task_0.id()))], self.updates)
-        self.assertItemsEqual([(2.5, '0', 1, 100)], self.objects_added)
+        self.assertItemsEqual([ObjectAddition(2.5, '0', 1, 100)],
+                              self.objects_added)
 
         self.updates = []
         self._advance()
@@ -710,7 +742,9 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
 
         self.assertItemsEqual([(1.0, FinishTaskUpdate(task_0.id()))], self.updates)
-        self.assertItemsEqual([(1.0, '0', 1, 100), (1.0, '1', 1, 200)], self.objects_added)
+        self.assertItemsEqual([ObjectAddition(1.0, '0', 1, 100),
+                               ObjectAddition(1.0, '1', 1, 200)],
+                              self.objects_added)
 
         self.updates = []
         self.objects_added = []
@@ -740,7 +774,8 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
 
         self.assertItemsEqual([(1.4, SubmitTaskUpdate(task_1)), (2.5, FinishTaskUpdate(task_0.id()))], self.updates)
-        self.assertItemsEqual([(2.5, '0', 1, 100)], self.objects_added)
+        self.assertItemsEqual([ObjectAddition(2.5, '0', 1, 100)],
+                              self.objects_added)
 
         self.updates = []
         self.objects_added = []
@@ -754,7 +789,8 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
 
         self.assertItemsEqual([(3.7, FinishTaskUpdate(task_1.id()))], self.updates)
-        self.assertItemsEqual([(3.7, '1', 1, 100)], self.objects_added)
+        self.assertItemsEqual([ObjectAddition(3.7, '1', 1, 100)],
+                              self.objects_added)
 
     def test_priorities(self):
         phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [TaskSubmit(task_id = 2,time_offset = 0.4), TaskSubmit(task_id = 3,time_offset = 0.4)], duration = 1.0)

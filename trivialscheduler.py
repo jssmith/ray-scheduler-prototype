@@ -285,8 +285,51 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
 
 class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
 
-    def __init__(self, system_time, scheduler_db):
+    def __init__(self, system_time, scheduler_db, event_loop):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db)
+        self._pylogger = logging.getLogger(__name__ + '.TransferCostAwareGlobalScheduler')
+        self._event_loop = event_loop;
+        self._schedcycle = 1; #seconds
+        self._event_loop.add_timer(self._schedcycle,
+                                   TransferCostAwareGlobalScheduler._handle_timer, (self, ))
+
+    def _get_worker_capacities(self):
+        nodecaps = {}
+        for (node_id, node_status) in sorted(self._state.nodes.items()):
+            nodecap = 0
+            if node_status.num_workers_executing < node_status.num_workers:
+                nodecap = node_status.num_workers - node_status.num_workers_executing
+            nodecaps[node_id] = nodecap
+        return nodecaps
+
+    def _get_object_usage(self):
+        self._state.finished_objects.items()
+
+    @staticmethod
+    def _handle_timer(context):
+        (self, ) = context
+        #timer fired, process pending tasks
+        #construct the cost matrix C, the usage matrix U
+        tnow = self._system_time.get_time()
+        numrunnable = len(self._state.runnable_tasks)
+        numtasks = len(self._state.tasks)
+        print "timer handler fired at time t=%s , runnable left=%s tasks_left=%s" %(tnow, )
+        #self._pylogger.debug("timer handler fired at time t={}".format(tnow))
+
+
+        #set the next timer
+        self._event_loop.add_timer(self._schedcycle,
+                                   TransferCostAwareGlobalScheduler._handle_timer, (self,))
+
+    def _handle_update(self, update):
+        self._state.update(update, self._system_time.get_time())
+        runnable_tasks = self._state.runnable_tasks[:]
+        for task_id in runnable_tasks:
+            # get its object dependencies
+            task_deps = self._state.tasks[task_id].get_depends_on()
+        #####CONTINUE HERE###################
+        #### for now we may want to call process tasks to match the previous flow, while constructing matrices
+            
 
     def _select_node(self, task_id):
         #leave this same as location aware for now
@@ -434,8 +477,8 @@ class TransferCostAwareScheduler(BaseScheduler):
     def __init__(self, system_time, scheduler_db):
         BaseScheduler.__init__(self, system_time, scheduler_db)
 
-    def _make_global_scheduler(self):
-        return TransferCostAwareGlobalScheduler(self._system_time, self._scheduler_db)
+    def _make_global_scheduler(self, event_loop):
+        return TransferCostAwareGlobalScheduler(self._system_time, self._scheduler_db, event_loop)
 
 
 class DelayScheduler(BaseScheduler):

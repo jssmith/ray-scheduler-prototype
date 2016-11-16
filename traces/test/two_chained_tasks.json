@@ -13,7 +13,8 @@
               "timeOffset": 1.0
             }
           ],
-          "duration": 1.0
+          "duration": 1.0,
+          "creates": []
         }
       ],
       "results": [
@@ -30,7 +31,8 @@
           "phaseId": 0,
           "dependsOn": [],
           "submits": [],
-          "duration": 2.0
+          "duration": 2.0,
+          "creates": []
         }
       ],
       "results": [

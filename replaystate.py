@@ -538,7 +538,7 @@ class Task():
 
 
 class TaskPhase():
-    def __init__(self, phase_id, depends_on, submits, duration):
+    def __init__(self, phase_id, depends_on, submits, duration, creates=None):
         for s in submits:
             if s.time_offset > duration:
                 raise ValidationError('TaskPhase: submits beyond phase duration')
@@ -548,6 +548,10 @@ class TaskPhase():
         self.depends_on = map(lambda x: str(x), depends_on)
         self.submits = submits
         self.duration = duration
+        if creates is None:
+            self.creates = []
+        else:
+            self.creates = creates
 
 
 class TaskResult():
@@ -651,8 +655,8 @@ def computation_decoder(dict):
     keys = frozenset(dict.keys())
     if keys == frozenset([u'timeOffset', 'taskId']):
         return TaskSubmit(dict[u'taskId'], dict[u'timeOffset'])
-    if keys == frozenset([u'duration', u'phaseId', u'submits', u'dependsOn']):
-        return TaskPhase(dict[u'phaseId'], dict[u'dependsOn'], dict[u'submits'], dict[u'duration'])
+    if keys == frozenset([u'duration', u'phaseId', u'submits', u'dependsOn', u'creates']):
+        return TaskPhase(dict[u'phaseId'], dict[u'dependsOn'], dict[u'submits'], dict[u'duration'], u'creates')
     if keys == frozenset([u'phases', u'results', u'taskId']):
         return Task(dict[u'taskId'], dict[u'phases'], dict[u'results'])
     if keys == frozenset([u'tasks', u'rootTask']):

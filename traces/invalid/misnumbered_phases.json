@@ -8,13 +8,15 @@
           "phaseId": 1,
           "dependsOn": [],
           "submits": [],
-          "duration": 1.0
+          "duration": 1.0,
+          "creates": []
         },
         {
           "phaseId": 0,
           "dependsOn": [],
           "submits": [],
-          "duration": 1.0
+          "duration": 1.0,
+          "creates": []
         }
       ],
       "results": [

@@ -4,6 +4,8 @@ import simplejson as json
 from collections import defaultdict
 
 
+ROOT_TASK_ID = "0"
+
 def parse_json_dir(log_dir):
     event_logs = []
     for filename in os.listdir(log_dir):
@@ -27,7 +29,7 @@ def parse_json_dir(log_dir):
 # that produced it. The second has key task, value list of object ids that it
 # depends on.
 def build_dependencies(event_logs):
-    object_dependencies = defaultdict(list)
+    object_dependencies = {}
     task_dependencies = {}
     for event_log in event_logs:
         for event in event_log:
@@ -37,7 +39,6 @@ def build_dependencies(event_logs):
             for object_id in object_ids:
                 object_dependencies[object_id] = event['taskId']
             task_dependencies[event['taskId']] = event['dependsOn']
-    dependencies = {}
     return object_dependencies, task_dependencies
 
 
@@ -50,6 +51,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
     phase = 0
     depends_on = []
     submits = []
+    creates = []
     cur_time = 0
 
     for event in event_log:
@@ -74,6 +76,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
             phase = 0
             depends_on = task_dependencies[task_id]
             submits = []
+            creates = []
             cur_time = event['time']
         elif event_type == 'PHASE_END':
             phases.append({
@@ -81,11 +84,13 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
                 'dependsOn': depends_on,
                 'submits': submits,
                 'duration': event['time'] - cur_time,
+                'creates': creates,
                 })
         elif event_type == 'PHASE_BEGIN':
             phase += 1
             depends_on = event['dependsOn']
             submits = []
+            creates = []
             cur_time = event['time']
         elif event_type == 'END':
             phases.append({
@@ -93,6 +98,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
                 'dependsOn': depends_on,
                 'submits': submits,
                 'duration': event['time'] - cur_time,
+                'creates': creates,
                 })
             tasks.append({
                 'taskId': task_id,
@@ -101,7 +107,10 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
                 })
         elif event_type == 'PUT':
             object_id = event['objectId']
-            object_dependencies[object_id].append(task_id)
+            creates.append({
+                'objectId': event['objectId'],
+                'size': event['size'],
+                })
         elif event_type == 'DRIVER_END':
             if not is_driver:
                 continue
@@ -110,6 +119,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
                 'dependsOn': depends_on,
                 'submits': submits,
                 'duration': event['time'] - cur_time,
+                'creates': creates,
                 })
         else:
             print "Found unexpected event type {0}".format(event_type)
@@ -117,7 +127,7 @@ def build_tasks(object_dependencies, task_dependencies, event_log, task_roots):
 
     # The task ID should not be set if this the driver program.
     if (task_id is None) and (event_log):
-        task_id = str(len(task_roots))
+        task_id = ROOT_TASK_ID
         tasks.append({
             'taskId': task_id,
             'phases': phases,

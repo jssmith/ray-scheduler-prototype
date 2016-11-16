@@ -21,7 +21,8 @@
               "timeOffset": 0.1
             }
           ],
-          "duration": 0.1
+          "duration": 0.1,
+          "creates": []
         },
         {
           "phaseId": 1,
@@ -29,7 +30,8 @@
             4
           ],
           "submits": [],
-          "duration": 0.2
+          "duration": 0.2,
+          "creates": []
         }
       ],
       "results": [
@@ -46,7 +48,8 @@
           "phaseId": 0,
           "dependsOn": [],
           "submits": [],
-          "duration": 1.5
+          "duration": 1.5,
+          "creates": []
         }
       ],
       "results": [
@@ -63,7 +66,8 @@
           "phaseId": 0,
           "dependsOn": [],
           "submits": [],
-          "duration": 1.8
+          "duration": 1.8,
+          "creates": []
         }
       ],
       "results": [
@@ -83,7 +87,8 @@
             3
           ],
           "submits": [],
-          "duration": 1.0
+          "duration": 1.0,
+          "creates": []
         }
       ],
       "results": [

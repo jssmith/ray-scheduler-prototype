@@ -1,4 +1,6 @@
 from collections import defaultdict
+from collections import namedtuple
+from collections import OrderedDict
 import sys
 import logging
 
@@ -205,6 +207,81 @@ class LocationAwareGlobalScheduler(BaseGlobalScheduler):
                     best_node_id = node_id
         return best_node_id
 
+
+class DelayGlobalScheduler(BaseGlobalScheduler):
+
+    def __init__(self, system_time, scheduler_db):
+        BaseGlobalScheduler.__init__(self, system_time, scheduler_db)
+        self._pylogger = logging.getLogger(__name__+'.DelayGlobalScheduler')
+        self._WaitingInfo = namedtuple('WaitingInfo', ['node_id', 'start_waiting_time', 'expiration_time'])
+        self._waiting_tasks = OrderedDict()
+        self._max_delay = 1
+
+    def _best_node(self, task_id):
+        task_deps = self._state.tasks[task_id].get_depends_on()
+        best_node_id = None
+        best_cost = sys.maxint
+        best_node_ready = False
+        for (node_id, node_status) in sorted(self._state.nodes.items()):
+            cost = 0
+            for depends_on in task_deps:
+                if not self._state.object_ready(depends_on, node_id):
+                    cost += 1
+            if cost < best_cost or (cost == best_cost and not best_node_ready):
+                best_cost = cost
+                best_node_id = node_id
+                best_node_ready = node_status.num_workers_executing < node_status.num_workers
+        if best_node_id is None:
+            raise RuntimeError('unexpected state')
+        return (best_node_id, best_node_ready)
+
+    def _process_tasks(self):
+        for task_id, waiting_info in self._waiting_tasks.items():
+            (best_node_id, best_node_ready) = self._best_node(task_id)
+            if best_node_ready:
+                self._pylogger.debug("now scheduling delayed task {} on node {} - delay is {}".format(
+                    task_id, best_node_id,
+                    self._system_time.get_time() - waiting_info.start_waiting_time),
+                    extra={'timestamp':self._system_time.get_time()})
+                del self._waiting_tasks[task_id]
+                self._execute_task(best_node_id, task_id)
+
+        for task_id in self._state.runnable_tasks[:]:
+            if task_id not in self._waiting_tasks.keys():
+                task_deps = self._state.tasks[task_id].get_depends_on()
+                (best_node_id, best_node_ready) = self._best_node(task_id)
+                if best_node_ready:
+                    self._pylogger.debug("immediately scheduling schedule task {} on node {}".format(
+                        task_id, best_node_id),
+                        extra={'timestamp':self._system_time.get_time()})
+                    self._execute_task(best_node_id, task_id)
+                else:
+                    self._pylogger.debug("waiting to schedule task {} on node {}".format(
+                        task_id, best_node_id),
+                        extra={'timestamp':self._system_time.get_time()})
+                    self._waiting_tasks[task_id] = self._WaitingInfo(
+                        best_node_id,
+                        self._system_time.get_time(),
+                        self._system_time.get_time() + self._max_delay)
+                    self._system_time.schedule_delayed(self._max_delay,
+                        lambda task_id=task_id: self._wait_expired(task_id))
+
+    def _wait_expired(self, task_id):
+        if task_id in self._waiting_tasks.keys():
+            # trivial scheduler algorithm, place anywhere available
+            for node_id, node_status in sorted(self._state.nodes.items()):
+                if node_status.num_workers_executing < node_status.num_workers:
+                    self._pylogger.debug("delay exceeded, scheduling task {} on node {}".format(
+                        task_id, node_id),
+                        extra={'timestamp':self._system_time.get_time()})
+                    del self._waiting_tasks[task_id]
+                    self._execute_task(node_id, task_id)
+                    return
+            self._pylogger.debug("delay exceeded but no nodes available, unable to schedule task {}".format(
+                task_id),
+                extra={'timestamp':self._system_time.get_time()})
+
+
 class PassthroughLocalScheduler():
     def __init__(self, system_time, node_runtime, scheduler_db):
         self._system_time = system_time
@@ -327,6 +404,15 @@ class LocationAwareScheduler(BaseScheduler):
 
     def _make_global_scheduler(self):
         return LocationAwareGlobalScheduler(self._system_time, self._scheduler_db)
+
+
+class DelayScheduler(BaseScheduler):
+
+    def __init__(self, system_time, scheduler_db):
+        BaseScheduler.__init__(self, system_time, scheduler_db)
+
+    def _make_global_scheduler(self):
+        return DelayGlobalScheduler(self._system_time, self._scheduler_db)
 
 
 class TrivialLocalScheduler(TrivialScheduler):

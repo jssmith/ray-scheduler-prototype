@@ -8,7 +8,8 @@ import logging
 schedulers = {
     'trivial' : TrivialScheduler,
     'location_aware' : LocationAwareScheduler,
-    'trivial_local' : TrivialLocalScheduler
+    'trivial_local' : TrivialLocalScheduler,
+    'delay' : DelayScheduler
 }
 
 def usage():

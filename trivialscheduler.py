@@ -298,13 +298,13 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         Pre-condition: each node in the node_id_list exists in the nodes table.
         Post-condition: capacities correspond to the order of node ids in node_id_list.
         '''
-        node_caps = {} #dict mapping node_id --> (int) capacity
+        node_caps = []
         for node_id in node_id_list:
             node_status = self._state.nodes[node_id]
             node_cap = 0
             if node_status.num_workers_executing < node_status.num_workers:
                 node_cap = node_status.num_workers - node_status.num_workers_executing
-            node_caps[node_id] = node_cap
+            node_caps.append(node_cap)
 
         return node_caps
 
@@ -316,23 +316,38 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         '''
         object_usage_array = []
         object_id_list = sorted(self._state.finished_objects)
+        #used_object_id_list = []
+
+        used_object_id_list = reduce(lambda x, y: x+y,
+               [self._state.tasks[tid].get_depends_on() for tid in tasklist])
+        used_object_id_set = set(used_object_id_list)
+        used_object_id_list = sorted(used_object_id_set) #get rid of duplicates and sort
+
+        # check if all used objects also in finished (intersection same size as the set of used)
+        assert(len(used_object_id_set.intersection(set(object_id_list))) == len(used_object_id_list))
+        #
+        # for tid in tasklist:
+        #     #get all used objects first
+        #     task_deps = self._state.tasks[tid].get_depends_on()
+        #     used_object_id_list += task_deps
+        #
+        # used_object_id_set = set(used_object_id_list).intersection(set(object_id_list))
+        #
+        # assert(len(used_object_id_set) == len(set(used_object_id_list)))
+        # used_object_id_list = sorted(used_object_id_set) #sorted minimal list of used objects
+
+        #now construct the usage matrix U
         for i in range(len(tasklist)):
             tid = tasklist[i]
-            task_deps = self._state.tasks[tid].get_depends_on()
             object_usage_array.append([]) #new task row vector
-            #optional sanity check: all dependencies should be ready
-            for objid in task_deps:
-                assert(objid in object_id_list)
-            #now construct the row vector for the task tid
-            for objid in object_id_list:
-                if objid in task_deps:
+            for objid in used_object_id_list:
+                if objid in self._state.tasks[tid].get_depends_on():
                     object_usage_array[i].append(1)
                 else:
                     object_usage_array[i].append(0)
 
-
         print object_usage_array
-        return (object_usage_array, object_id_list)
+        return (object_usage_array, used_object_id_list)
 
     def _get_object_cost(self, object_id_list, node_ids):
         ''' For a given set of object ids and node ids, construct a cost matrix C_no that represents cost
@@ -347,15 +362,22 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
                     node2object[node_id] = []
                 node2object[node_id].append(objid)
 
-        node2object_array = [] #expand node2object into a 2D array
+        # now add all nodes not there yet
+        for node_id in node_ids:
+            if node_id not in node2object.keys():
+                node2object[node_id] = []
+        assert(len(node2object.keys())== len(node_ids)) #did we cover all nodes given?
+        print "node2object"; print node2object
+        #expand this dictionary into a 2D array
+        node2object_array = []
         for i in range(len(node_ids)):
             node_id = node_ids[i]
             node2object_array.append([]) #new node row vector for ith node
             for objid in object_id_list:
                 if objid in node2object[node_id]:
-                    node2object_array[i].append(0)
+                    node2object_array[i].append(0) #local
                 else:
-                    node2object_array[i].append(1) #TODO: change this to object size, when available
+                    node2object_array[i].append(1) #remote: TODO: change this to object size, when available
 
         return node2object_array
 
@@ -392,11 +414,16 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         task_id_list = [task_id]
         (object_usage_array, object_id_list) = self._get_object_usage(task_id_list)
         node_id_list = sorted(self._state.nodes) # sorted list of node ids
+        print "node_id_list"; print node_id_list
+        print "object_id_list"; print object_id_list
+        print "object_usage_array"; print object_usage_array
         node2object_array = self._get_object_cost(object_id_list, node_id_list)
         C = np.matrix(node2object_array, dtype=int)
         U = np.matrix(object_usage_array, dtype=int)
         workercaps = self._get_worker_capacities(node_id_list)
+        print "workercaps = "; print workercaps
         P_sol = self.schedule(C, U, workercaps)
+        print "P_sol="; print P_sol
         #TODO: process results of P_sol:
         (numt, numw) = P_sol.shape
         for i in range(numt):
@@ -415,7 +442,7 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
 
     # input: cost matrix C_wo, usage matrix U_to
     # output:  matrix P_tw , s.t. P[t,w] == 1 iff task t is placed on worker w
-    def schedule(C, U, node_capacities):
+    def schedule(self, C, U, node_capacities):
         from ortools.linear_solver import pywraplp
         import time
 

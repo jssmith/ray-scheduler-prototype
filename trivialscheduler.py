@@ -3,6 +3,7 @@ from collections import namedtuple
 from collections import OrderedDict
 import sys
 import logging
+import numpy as np
 
 from schedulerbase import *
 from itertools import ifilter
@@ -22,10 +23,9 @@ class GlobalSchedulerState():
         self.executing_tasks = {}
 
         # Map of object id to node id
-        # TODOs
-        #  - this should be a list of node ids
-        #  - add the sizes of object ids
+        # TODO:  - add the sizes of object ids [atumanov]
         self.finished_objects = defaultdict(list)
+        #TODO: calculate the node_id -> object_id inverse map [atumanov]
 
         # Map from task id to Task object
         self.tasks = {}
@@ -290,64 +290,220 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         self._pylogger = logging.getLogger(__name__ + '.TransferCostAwareGlobalScheduler')
         self._event_loop = event_loop;
         self._schedcycle = 1; #seconds
-        self._event_loop.add_timer(self._schedcycle,
-                                   TransferCostAwareGlobalScheduler._handle_timer, (self, ))
+        #self._event_loop.add_timer(self._schedcycle,
+        #                           TransferCostAwareGlobalScheduler._handle_timer, (self, ))
 
-    def _get_worker_capacities(self):
-        nodecaps = {}
-        for (node_id, node_status) in sorted(self._state.nodes.items()):
-            nodecap = 0
+    def _get_worker_capacities(self, node_id_list):
+        ''' given an ordered list of node ids, return a corresponding list of node capacities.
+        Pre-condition: each node in the node_id_list exists in the nodes table.
+        Post-condition: capacities correspond to the order of node ids in node_id_list.
+        '''
+        node_caps = {} #dict mapping node_id --> (int) capacity
+        for node_id in node_id_list:
+            node_status = self._state.nodes[node_id]
+            node_cap = 0
             if node_status.num_workers_executing < node_status.num_workers:
-                nodecap = node_status.num_workers - node_status.num_workers_executing
-            nodecaps[node_id] = nodecap
-        return nodecaps
+                node_cap = node_status.num_workers - node_status.num_workers_executing
+            node_caps[node_id] = node_cap
 
-    def _get_object_usage(self):
-        self._state.finished_objects.items()
+        return node_caps
 
-    @staticmethod
-    def _handle_timer(context):
-        (self, ) = context
-        #timer fired, process pending tasks
-        #construct the cost matrix C, the usage matrix U
-        tnow = self._system_time.get_time()
-        numrunnable = len(self._state.runnable_tasks)
-        numtasks = len(self._state.tasks)
-        print "timer handler fired at time t=%s , runnable left=%s tasks_left=%s" %(tnow, )
-        #self._pylogger.debug("timer handler fired at time t={}".format(tnow))
+    def _get_object_usage(self, tasklist):
+        '''construct a usage matrix U_to, for each task t, generate a row vector of object usage for task t.
+        Pre-condition: list of task_ids is runnable, we assert that all of the dependencies are ready
+        Post-condition: object usage array is T tasks by O objects where T==len(tasklist), O=len(object_id_list);
+            object usage array is a list of row vectors, one per each task t \in tasklist.
+        '''
+        object_usage_array = []
+        object_id_list = sorted(self._state.finished_objects)
+        for i in range(len(tasklist)):
+            tid = tasklist[i]
+            task_deps = self._state.tasks[tid].get_depends_on()
+            object_usage_array.append([]) #new task row vector
+            #optional sanity check: all dependencies should be ready
+            for objid in task_deps:
+                assert(objid in object_id_list)
+            #now construct the row vector for the task tid
+            for objid in object_id_list:
+                if objid in task_deps:
+                    object_usage_array[i].append(1)
+                else:
+                    object_usage_array[i].append(0)
 
 
-        #set the next timer
-        self._event_loop.add_timer(self._schedcycle,
-                                   TransferCostAwareGlobalScheduler._handle_timer, (self,))
+        print object_usage_array
+        return (object_usage_array, object_id_list)
 
-    def _handle_update(self, update):
-        self._state.update(update, self._system_time.get_time())
-        runnable_tasks = self._state.runnable_tasks[:]
-        for task_id in runnable_tasks:
-            # get its object dependencies
-            task_deps = self._state.tasks[task_id].get_depends_on()
-        #####CONTINUE HERE###################
-        #### for now we may want to call process tasks to match the previous flow, while constructing matrices
-            
+    def _get_object_cost(self, object_id_list, node_ids):
+        ''' For a given set of object ids and node ids, construct a cost matrix C_no that represents cost
+            of access from node n to object o
+        '''
+        #need to construct an inverse map of nodes to objects
+        node2object = {}
+        for objid in object_id_list:
+            node_id_list = self._state.finished_objects[objid]
+            for node_id in node_id_list:
+                if node_id not in node2object.keys():
+                    node2object[node_id] = []
+                node2object[node_id].append(objid)
+
+        node2object_array = [] #expand node2object into a 2D array
+        for i in range(len(node_ids)):
+            node_id = node_ids[i]
+            node2object_array.append([]) #new node row vector for ith node
+            for objid in object_id_list:
+                if objid in node2object[node_id]:
+                    node2object_array[i].append(0)
+                else:
+                    node2object_array[i].append(1) #TODO: change this to object size, when available
+
+        return node2object_array
+
+    #@staticmethod
+    #def _handle_timer(context):
+    #    (self, ) = context
+    #    #timer fired, process pending tasks
+    #    #construct the cost matrix C, the usage matrix U
+    #    tnow = self._system_time.get_time()
+    #    numrunnable = len(self._state.runnable_tasks)
+    #    numtasks = len(self._state.tasks)
+    #    print "timer handler fired at time t=%s , runnable left=%s tasks_left=%s" %(tnow, )
+    #    #self._pylogger.debug("timer handler fired at time t={}".format(tnow))
+    #
+    #
+    #    #set the next timer
+    #    self._event_loop.add_timer(self._schedcycle,
+    #                               TransferCostAwareGlobalScheduler._handle_timer, (self,))
+
+    #def _handle_update(self, update):
+    #    self._state.update(update, self._system_time.get_time())
+    #    runnable_tasks = self._state.runnable_tasks[:]
+    #    for task_id in runnable_tasks:
+    #        # get its object dependencies
+    #        task_deps = self._state.tasks[task_id].get_depends_on()
+    #    #####CONTINUE HERE###################
+    #    #### for now we may want to call process tasks to match the previous flow, while constructing matrices
+
 
     def _select_node(self, task_id):
-        #leave this same as location aware for now
-        task_deps = self._state.tasks[task_id].get_depends_on()
-        best_node_id = None
-        best_cost = sys.maxint
-        # TODO short-circuit cost computation if there are no dependencies.
-        #      also may optimize lookup strategy for one or two dependencies.
-        for (node_id, node_status) in self._state.nodes.items():
-            if node_status.num_workers_executing < node_status.num_workers:
-                cost = 0
-                for depends_on in task_deps:
-                    if not self._state.object_ready(depends_on, node_id):
-                        cost += 1
-                if cost < best_cost:
-                    best_cost = cost
-                    best_node_id = node_id
-        return best_node_id
+        #construct an optimization problem just for one task
+        #order matters for node, task and object lists!
+        #Post-condition : return the node on which this task is supposed to run
+        task_id_list = [task_id]
+        (object_usage_array, object_id_list) = self._get_object_usage(task_id_list)
+        node_id_list = sorted(self._state.nodes) # sorted list of node ids
+        node2object_array = self._get_object_cost(object_id_list, node_id_list)
+        C = np.matrix(node2object_array, dtype=int)
+        U = np.matrix(object_usage_array, dtype=int)
+        workercaps = self._get_worker_capacities(node_id_list)
+        P_sol = self.schedule(C, U, workercaps)
+        #TODO: process results of P_sol:
+        (numt, numw) = P_sol.shape
+        for i in range(numt):
+            for j in range(numw):
+                if P_sol[i, j]:
+                    #task i is to run on node j
+                    task_id = task_id_list[i]
+                    node_id = node_id_list[j]
+                    #dispatch task_id on node_id
+                    return node_id
+
+
+        #we should never be here
+        print "[transfer-cost-aware] We should not be here"
+        return None
+
+    # input: cost matrix C_wo, usage matrix U_to
+    # output:  matrix P_tw , s.t. P[t,w] == 1 iff task t is placed on worker w
+    def schedule(C, U, node_capacities):
+        from ortools.linear_solver import pywraplp
+        import time
+
+        # sanity check
+        numw, numo1 = C.shape
+        numt, numo2 = U.shape
+        assert (numo1 == numo2)
+        # Instantiate a Glop solver, naming it SolveSimpleSystem.
+        # solver = pywraplp.Solver('SolveSimpleSystem',
+        #                         pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
+        solver = pywraplp.Solver('ray-solver',
+                                 pywraplp.Solver.BOP_INTEGER_PROGRAMMING)
+        # compute coefficient matrix K
+        # K = UC^T
+        # coefficient ij = K_ij
+        K = U * C.T
+        print("C=");
+        print(C)
+        print("U=");
+        print(U)
+        print("K=");
+        print(K)
+
+        P = []
+        # create boolean decision variable matrix P
+        for i in range(numt):
+            P.append([])  # add new row
+            for j in range(numw):
+                varname = "x%02d%02d" % (i, j)
+                P[i].append(solver.BoolVar(varname))
+
+        # print("P="); print(P)
+
+        objective = solver.Objective()
+        for i in range(numt):
+            for j in range(numw):
+                # set coefficient
+                objective.SetCoefficient(P[i][j], K[i, j])
+        # set direction of optimization
+        objective.SetMinimization()
+
+        # CONSTRAINTS
+        # 1. each task is assigned to exactly one worker; one constraint for each task i
+        task_constraints = []
+        for i in range(numt):
+            tconstr = solver.Constraint(1, 1)  # 1<= expr <=1
+            for j in range(numw):
+                tconstr.SetCoefficient(P[i][j], 1)
+            # save constraint
+            task_constraints.append(tconstr)
+
+        # 2. each worker is not assigned more than its maxcap worth of work
+        worker_constraints = []
+        for j in range(numw):  # for each worker
+            wconstr = solver.Constraint(0, node_capacities[j])  # 0 <= expr <= MAXCAP
+            for i in range(numt):
+                wconstr.SetCoefficient(P[i][j], 1)
+            # remember constraint
+            worker_constraints.append(wconstr)
+
+        # Solve the BOP.
+        t1s = time.time()
+        status = solver.Solve()
+        t2s = time.time()
+
+        # extract solution
+        P_sol = np.zeros((numt, numw), dtype=int)
+        for i in range(numt):
+            for j in range(numw):
+                P_sol[i, j] = P[i][j].solution_value()
+
+        # print("Psol="); print(P_sol)
+        PC = P_sol * C
+        PCU = np.multiply(PC, U)
+        # print("PCU=");
+        # print(PCU)
+        objval = np.sum(PCU)
+
+        # print('Number of variables =', solver.NumVariables())
+        # print('Number of constraints =', solver.NumConstraints())
+        # # The objective value of the solution.
+        # print('Optimal objective value =', objval)
+        # print("solver latency = %5.2f ms" % ((t2s - t1s) * 1000))
+
+        # The value of each variable in the solution.
+        # print('y = ', y.solution_value())
+        return P_sol
+
 
 
 class PassthroughLocalScheduler():

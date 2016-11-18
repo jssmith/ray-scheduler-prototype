@@ -40,6 +40,8 @@ def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_wo
             extra={'timestamp':system_time.get_time()})
         return False
     else:
+        print "{:.6f}: Simulation finished successfully. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
+        print "{:.6f}: {} : {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path)
         return True
 
 def setup_logging():

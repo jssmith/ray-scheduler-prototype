@@ -2,6 +2,7 @@ import sys
 import heapq
 import itertools
 import logging
+import types
 
 from collections import defaultdict
 from collections import deque
@@ -460,7 +461,8 @@ class ComputationDescription():
                         raise ValidationError('Dependency on missing object id {}'.format(object_id))
 
         # no cycles, everything reachable from roots
-        dg = DirectedGraph()
+        validation_dg = DirectedGraph()
+        load_dg = DirectedGraph()
         tasks_map = {}
         for task in tasks:
             tasks_map[task.id()] = task
@@ -470,23 +472,70 @@ class ComputationDescription():
                 phase = task.get_phase(phase_id)
                 if prev_phase:
                     #print "EDGE: previous phase edge"
-                    dg.add_edge(prev_phase, phase)
+                    validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(phase))
+                    load_dg.add_edge(prev_phase, phase)
                 for object_id in phase.depends_on:
                     #print "EDGE: phase dependency edge"
-                    dg.add_edge(object_id, phase)
+                    validation_dg.add_edge(validation_dg.get_id(object_id), validation_dg.get_id(phase))
+                    load_dg.add_edge(object_id, phase)
                 for submits in phase.submits:
                     #print "EDGE: phase schedules edge"
-                    dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
+                    validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(tasks_map[submits.task_id].get_phase(0)))
+                    load_dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
                     # TODO object id produced in scheduling
+                #for puts in phase.puts:
+
                 prev_phase = phase
             for task_result in task.get_results():
                 #print "EDGE: task result edge"
-                dg.add_edge(prev_phase, task_result.object_id)
-        dg.verify_dag_root(tasks_map[root_task_str].get_phase(0))
+                validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(task_result.object_id))
+                load_dg.add_edge(prev_phase, task_result.object_id)
+        validation_dg.verify_dag_root(tasks_map[root_task_str].get_phase(0))
+
 
         # verification passed so initialize
         self._root_task = root_task_str
         self._tasks = tasks_map
+
+
+        #load measure:
+        topo_sort_nodes = load_dg.topo_sort(tasks_map[self._root_task].get_phase(0))
+        total_tasks_durations = 0
+        total_num_tasks = 0
+        critical_path = {}
+        critical_path[tasks_map[self._root_task].get_phase(0)] = tasks_map[self._root_task].get_phase(0).duration
+        #print "topo sort nodes is {}".format(topo_sort_nodes)
+        for n in topo_sort_nodes:
+            if isinstance(n, TaskPhase):
+                total_tasks_durations += n.duration
+                if n.phase_id == 0:
+                    total_num_tasks += 1
+            else:
+                #TODO: this means this is an object_id. We need to have a map of (object_id, size) to calculate the object size average, or total object sizes
+            #find critical path:
+                pass
+            for u in load_dg.adj_in(n):
+                if isinstance(n, TaskPhase):
+                    #print "instance n is {}, instance u is {}".format(n, u)
+                    if critical_path.get(n,0) < critical_path[u] + n.duration:
+                        critical_path[n] = critical_path[u] + n.duration
+                else:
+                    if critical_path.get(n,0) < critical_path[u]:
+                        critical_path[n] = critical_path[u]
+                 
+        
+        critical_path_time = 0
+        for c in critical_path.keys():
+            if critical_path[c] > critical_path_time:
+                critical_path_time = critical_path[c]
+
+        normalized_critical_path = critical_path_time / total_tasks_durations
+        print "Total number of tasks is {}".format(total_num_tasks)
+        print "Critical path time is {} and total tasks duration is {}, so normalized critical path is {}".format(critical_path_time, total_tasks_durations, normalized_critical_path)
+        self.total_num_tasks = total_num_tasks
+        self.normalized_critical_path = normalized_critical_path
+        self.total_tasks_durations = total_tasks_durations
+
 
     def get_root_task(self):
         if self._root_task is None:
@@ -595,7 +644,7 @@ class DirectedGraph():
         self._id_map = {}
         self._edges = []
 
-    def _get_id(self, x):
+    def get_id(self, x):
         if x in self._id_map:
             #print 'found id for {}'.format(x)
             new_id = self._id_map[x]
@@ -608,11 +657,12 @@ class DirectedGraph():
         return new_id
 
     def add_edge(self, a, b):
-        id_a = self._get_id(a)
-        id_b = self._get_id(b)
+        #id_a = self._get_id(a)
+        #id_b = self._get_id(b)
         #print 'EDGE: {} => {}'.format(a, b)
         #print 'EDGE: {} -> {}'.format(id_a, id_b)
-        self._edges.append((id_a, id_b))
+        #self._edges.append((id_a, id_b))
+        self._edges.append((a, b))
 
     def verify_dag_root(self, root):
         # TODO(swang): What is the correct check here?
@@ -644,6 +694,46 @@ class DirectedGraph():
         visit(root_id)
         if False in visited:
             raise ValidationError('Reachability from root')
+
+
+    def topo_sort(self, root):
+        #print "root task is {}".format(root)
+        #print "edges is {}".format(self._edges)
+        topo_sorted_list = []
+        q = deque()
+        in_count = {}
+        for e in self._edges:
+            in_count[e[1]] = in_count.get(e[1], 0) + 1
+        #assuming we have only 1 root task! if we have several root tasks (a forest of jobs) this will have to change to "for a in nodes: if in_count[a] == 0: q.push(a)
+        q.append(root)
+        #print "current q in topo_sort is {}".format(q)
+        while q:
+           cur = q[0]
+           topo_sorted_list.append(cur)
+           q.popleft()
+           #sprint "cur is {}".format(cur)
+           for nxt in self.adj_out(cur):
+               in_count[nxt] -= 1
+               if in_count[nxt] == 0:
+                   q.append(nxt)
+        return topo_sorted_list
+
+
+    def adj_out(self, x):
+        result = []
+        for e in self._edges:
+            if e[0] == x:
+                result.append(e[1])
+        return result 
+
+
+    def adj_in(self, x):
+        result = []
+        for e in self._edges:
+            if e[1] == x:
+                result.append(e[0])
+        return result 
+ 
 
 
 class ValidationError(Exception):

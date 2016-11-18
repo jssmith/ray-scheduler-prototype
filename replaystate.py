@@ -482,8 +482,10 @@ class ComputationDescription():
                     #print "EDGE: phase schedules edge"
                     validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(tasks_map[submits.task_id].get_phase(0)))
                     load_dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
-                    # TODO object id produced in scheduling
-                #for puts in phase.puts:
+                for creates in phase.creates:
+                    #print "EDGE: phase creates object"
+                    validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(creates))
+                    load_dg.add_edge(phase, creates)
 
                 prev_phase = phase
             for task_result in task.get_results():

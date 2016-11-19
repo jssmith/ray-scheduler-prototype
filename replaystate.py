@@ -135,7 +135,7 @@ class ObjectStoreRuntime():
         self._object_sizes[object_id] = object_size
 
     def get_unready_locations(self, object_id):
-        return self._undready_objects_locations[object_id]
+        return self._unready_objects_locations[object_id]
 
     def get_locations(self, object_id):
         return self._objects_locations[object_id]
@@ -146,7 +146,9 @@ class ObjectStoreRuntime():
     def is_local(self, object_id, node_id):
         return node_id in self._objects_locations[object_id]
 
-    def get_object_size(self, object_id):
+    def get_object_size(self, node_id, object_id, result_handler):
+	# TODO(swang): Schedule the result handler after some delay.
+        #self._system_time.schedule_delayed(delay, lambda: result_handler(self._object_sizes(object_id)))
         return self._object_sizes(object_id)
 
     def _yield_object_ready_update(self, object_id, node_id, object_size):
@@ -488,15 +490,15 @@ class ComputationDescription():
                     load_dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
                 for creates in phase.creates:
                     #print "EDGE: phase creates object"
-                    validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(creates))
-                    load_dg.add_edge(phase, creates)
+                    validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(creates.object_id))
+                    load_dg.add_edge(phase, creates.object_id)
 
                 prev_phase = phase
             for task_result in task.get_results():
                 #print "EDGE: task result edge"
                 validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(task_result.object_id))
                 load_dg.add_edge(prev_phase, task_result.object_id)
-        validation_dg.verify_dag_root(tasks_map[root_task_str].get_phase(0))
+        validation_dg.verify_dag_root(validation_dg.get_id(tasks_map[root_task_str].get_phase(0)))
 
 
         # verification passed so initialize
@@ -673,7 +675,8 @@ class DirectedGraph():
     def verify_dag_root(self, root):
         # TODO(swang): What is the correct check here?
         return
-        root_id = self._get_id(root)
+        #root_id = self.get_id(root)
+        root_id = root
         # check that
         #  1/ we have a DAG
         #  2/ all nodes reachable from the root

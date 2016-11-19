@@ -292,6 +292,10 @@ class NodeRuntime():
                     put_event.time_offset,
                     lambda: self._object_store.add_object(put_event.object_id, self.node_id, put_event.size)
                     )
+            self._system_time.schedule_delayed(
+                    put_event.time_offset,
+                    lambda: self._yield_update(ObjectReadyUpdate(ObjectDescription(put_event.object_id, self.node_id, put_event.size), self.node_id))
+                    )
         for schedule_task in task_phase.submits:
             self._system_time.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
         self._system_time.schedule_delayed(task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id)))

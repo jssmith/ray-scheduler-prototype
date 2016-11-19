@@ -38,6 +38,9 @@ def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_wo
         pylogger.debug("failed to execute fully".format(
             num_workers_executing),
             extra={'timestamp':system_time.get_time()})
+        print "{:.6f}: Simulation Error. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
+        print "-1: {} : {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path)
+        return True
         return False
     else:
         print "{:.6f}: Simulation finished successfully. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)

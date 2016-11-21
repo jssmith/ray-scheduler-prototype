@@ -18,3 +18,8 @@ for trace in $(ls traces/test/*.json); do
     python replaytrace.py $NUM_NODES $NUM_WORKERS_PER_NODE 0.001 .0001 trivial $trace;
 done)
 ```
+
+## Installation
+- install anaconda
+- pip install ortools numpy
+

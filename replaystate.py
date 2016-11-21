@@ -149,7 +149,7 @@ class ObjectStoreRuntime():
     def get_object_size(self, node_id, object_id, result_handler):
 	# TODO(swang): Schedule the result handler after some delay.
         #self._system_time.schedule_delayed(delay, lambda: result_handler(self._object_sizes(object_id)))
-        return self._object_sizes(object_id)
+        return self._object_sizes[object_id]
 
     def _yield_object_ready_update(self, object_id, node_id, object_size):
         self._yield_update(node_id, ObjectReadyUpdate(ObjectDescription(object_id, node_id, object_size), node_id))
@@ -208,7 +208,9 @@ class NodeRuntime():
         self.num_workers_executing = 0
 
         self._time_buffer_size = 20
-        self._task_start_times = deque([], self._time_buffer_size)    
+        self._task_start_times = deque([], self._time_buffer_size)   
+        self._task_times = deque([], self._time_buffer_size)
+        self._task_start_times_map = {}
 
         self._queue_seq = 0
         self._queue = []
@@ -221,13 +223,18 @@ class NodeRuntime():
 
 
     def get_object_size(self, object_id):
-        return self._object_store.get_object_size(object_id)
+        return self._object_store.get_object_size(self.node_id, object_id, -1)
 
     def get_dispatch_queue_size(self):
         return len(self._queue)
 
     def get_node_eff_rate(self):
+        if (self._task_start_times[-1] - self._task_start_times[0]) == 0 :
+            return 0
         return len(self._task_start_times) / (self._task_start_times[-1] - self._task_start_times[0])
+
+    def get_avg_task_time(self):
+        return 1 if len(self._task_times) == 0 else sum(self._task_times) / len(self._task_times)
 
     def send_to_dispatcher(self, task, priority):
         self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority), extra={'timestamp':self._system_time.get_time()})
@@ -273,6 +280,7 @@ class NodeRuntime():
 
     def _start_task(self, task_id):
         self._task_start_times.append(self._system_time.get_time())
+        self._task_start_times_map[task_id] = self._system_time.get_time()
         self.num_workers_executing += 1
         self._logger.task_started(task_id, self.node_id)
         self._internal_scheduler_schedule(task_id, 0)
@@ -332,6 +340,8 @@ class NodeRuntime():
 #                print "XXX finished task {} number of phases is {}".format(update.task_id, num_phases)
                 self._yield_update(FinishTaskUpdate(update.task_id))
                 self.num_workers_executing -= 1
+                self._task_times.append(self._system_time.get_time() - self._task_start_times_map.get(update.task_id, 0)) 
+                print "task_times: {}".format(self._task_times)
                 self._system_time.schedule_immediate(lambda: self._process_tasks())
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))

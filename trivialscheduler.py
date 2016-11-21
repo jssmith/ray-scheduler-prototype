@@ -4,6 +4,7 @@ from collections import OrderedDict
 import sys
 import logging
 import numpy as np
+import os
 
 from schedulerbase import *
 from itertools import ifilter
@@ -603,30 +604,62 @@ class ThresholdLocalScheduler(PassthroughLocalScheduler):
         PassthroughLocalScheduler.__init__(self, time_source, node_runtime, scheduler_db)
 
     def _schedule_locally(self, task):
-        threshold2 = 3
-        if self._node_runtime.free_workers() > 0:
-            return False
-        print task.get_phase(0)
+        #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
+        #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
+        threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 20)
+        threshold1h = os.getenv('RAY_SCHED_THRESHOLD1H', 50)
+        threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 200)
+
         objects_transfer_size = 0
         objects_status = {'local_ready' : 0, 'remote_ready' : 0, 'local_notready' : 0, 'remote_notready' : 0, 'no_info' : 0}
+        remote_objects = []
+
+        #avg_task_time = 1
+        avg_task_time = self._node_runtime.get_avg_task_time()
+        print "get_avg_task_time : {}".format(self._node_runtime.get_avg_task_time())
+        #TODO: Need to implement self._node_runtime.get_avg_task_time() which buffers that last local 20 task completion times
+        dispatcher_load = self._node_runtime.get_dispatch_queue_size()
+        node_efficiency_rate = self._node_runtime.get_node_eff_rate()
+        #add to node_runtime the function get_node_eff_rate(). It will record a buffer in the form of list of task_start_time for the last 10 or 20 tasks (this will be a constant parameter) sent for execution on the node. The node efficiency rate will be the buffer size (whatever the constant is) divided by the (last_element-first_element) of the buffer.
+        
+        local_load = 0 if (node_efficiency_rate == 0) else ((dispatcher_load / node_efficiency_rate) / avg_task_time)
+        print "threshold: local load is {}".format(local_load)
+
         for d_object_id in task.get_phase(0).depends_on:
             if not self._node_runtime.is_local(d_object_id):
-                objects_transfer_size = transfer_size + self._node_runtime.get_object_size(d_object_id)
+                ###objects_transfer_size = transfer_size + self._node_runtime.get_object_size(d_object_id)
                 #TODO: add to node_runtime the function get_object_size() which just return a value from the _object_store sizes map/dict.
-                object_status = self._node_runtime.get_object_status()
-                if object_status == ready :
-                    objects_status[remote_ready] += 1 
-                elif (object_status == scheduled and get_location(d_object_id) != self._node_runtime._node_id) :
-                    objects_status[local_notready] += 1
-        dispatcher_load = self._node_runtime.get_dispatch_queue_size()
-        #TODO: add to node_runtime the function get_dispatch_queue_size().
-        node_efficiency_rate = self._node_runtime.get_node_eff_rate()
-        #TODO: add to node_runtime the function get_node_eff_rate(). It will record a buffer in the form of list of task_start_time for the last 10 or 20 tasks (this will be a constant parameter) sent for execution on the node. The node efficiency rate will be the buffer size (whatever the constant is) divided by the (last_element-first_element) of the buffer.
-        local_load = dispatcher_load / node_efficiency_rate
-        task_load = objects_transfer_size 
+#                object_status = self._node_runtime.get_object_status(d_object_id)
+#                if object_status == ready :
+#                    objects_status['remote_ready'] += 1 
+#                elif (object_status == scheduled and get_location(d_object_id) != self._node_runtime._node_id) :
+#                    objects_status['local_notready'] += 1
+                remote_objects.append(d_object_id)
+            else:
+                objects_status['local_ready'] += 1  
 
-        if task_load > threshold2 :
+        if len(task.get_phase(0).depends_on) == objects_status['local_ready'] and self._node_runtime.free_workers() > 0:
+            print "threshold: all objects ready"
+            self._node_runtime.send_to_dispatcher(task, 1)
+            return True
+        elif len(task.get_phase(0).depends_on) == objects_status['local_ready'] and local_load < threshold1l:
+            print "threshold: all objects ready"
+            self._node_runtime.send_to_dispatcher(task, 1)
+            return True
+
+
+        if local_load > threshold1h:
             return False
+        elif local_load < threshold1h and local_load > threshold1l:
+            #querry for remote object sizes and calculate task load
+            for remote_object_id in remote_objects:
+                #objects_transfer_size += self._node_runtime.get_object_size(remote_object_id) 
+                pass  
+            task_load = objects_transfer_size 
+            print "task load is {}".format(task_load)
+            if task_load > threshold2 :
+                return False
+
         self._node_runtime.send_to_dispatcher(task, 1)
         return True
 
@@ -697,3 +730,23 @@ class TrivialLocalScheduler(TrivialScheduler):
 
     def _make_local_scheduler(self, node_runtime, event_loop):
         return SimpleLocalScheduler(self._system_time, node_runtime, self._scheduler_db)
+
+
+class TrivialThresholdLocalScheduler(TrivialScheduler):
+
+    def __init__(self, system_time, scheduler_db):
+        TrivialScheduler.__init__(self, system_time, scheduler_db)
+
+    def _make_local_scheduler(self, node_runtime, event_loop):
+        return ThresholdLocalScheduler(self._system_time, node_runtime, self._scheduler_db)
+
+
+
+class TransferCostAwareLocalScheduler(TransferCostAwareScheduler):
+
+    def __init__(self, system_time, scheduler_db):
+        TransferCostAwareScheduler.__init__(self, system_time, scheduler_db)
+
+    def _make_local_scheduler(self, node_runtime, event_loop):
+        return SimpleLocalScheduler(self._system_time, node_runtime, self._scheduler_db)
+

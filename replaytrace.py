@@ -10,7 +10,9 @@ schedulers = {
     'location_aware' : LocationAwareScheduler,
     'trivial_local' : TrivialLocalScheduler,
     'delay' : DelayScheduler,
-    'transfer_aware' : TransferCostAwareScheduler
+    'transfer_aware' : TransferCostAwareScheduler,
+    'basic_threshold' : TrivialThresholdLocalScheduler,
+    'transfer_aware_local' : TransferCostAwareLocalScheduler
 }
 
 def usage():

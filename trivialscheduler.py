@@ -384,6 +384,10 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         print "timer handler fired at time t=%s , runnable=%s pending=%s executing=%s" \
               % (tnow, num_runnable, num_pending, num_executing)
         task_id_list = self._state.runnable_tasks[:]
+
+        #apply task selection policy
+        task_id_list = self._apply_task_policy(task_id_list)
+
         if len(task_id_list) > 0:
             (C,U,workercaps, node_id_list) = self._setup_bop(task_id_list)
 
@@ -412,18 +416,30 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         self._event_loop.add_timer(self._schedcycle,
                                    TransferCostAwareGlobalScheduler._handle_timer, (self,))
 
+    def _apply_task_policy(self, task_id_list, workercaps=None):
+        ''' given a set of tasks and worker capacities, mutate task id list (sort, subsample, reorder)'''
+
+        if not workercaps:
+            workercaps = self._get_worker_capacities(self._state.nodes)
+        #trivial task policy implementation
+        #note: it is possible to return an empty list of tasks (e.g., if no avail. capacity)
+        return task_id_list[:sum(workercaps)]
+
     def _setup_bop(self, task_id_list):
-        ''' given a set of tasks, set up everything needed to call schedule'''
-        (object_usage_array, object_id_list) = self._get_object_usage(task_id_list)
+        ''' given a set of tasks, set up everything needed to call schedule
+            Pre-condition: task and worker selection policies have been applied.
+        '''
         node_id_list = sorted(self._state.nodes) # sorted list of node ids
+        workercaps = self._get_worker_capacities(node_id_list)
+        print "workercaps = "; print workercaps
+
+        (object_usage_array, object_id_list) = self._get_object_usage(task_id_list)
         print "node_id_list"; print node_id_list
         print "object_id_list"; print object_id_list
         print "object_usage_array"; print object_usage_array
         node2object_array = self._get_object_cost(object_id_list, node_id_list)
         C = np.matrix(node2object_array, dtype=int)
         U = np.matrix(object_usage_array, dtype=int)
-        workercaps = self._get_worker_capacities(node_id_list)
-        print "workercaps = "; print workercaps
 
         return (C,U, workercaps, node_id_list)
 
@@ -438,23 +454,24 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         #order matters for node, task and object lists!
         #Post-condition : return the node on which this task is supposed to run
         task_id_list = [task_id]
-        (C,U, workercaps, node_id_list) = self._setup_bop(task_id_list)
+        task_id_list = self._apply_task_policy(task_id_list)
+        if len(task_id_list) > 0:
+            (C,U, workercaps, node_id_list) = self._setup_bop(task_id_list)
 
-        P_sol = self.schedule(C, U, workercaps)
-        print "P_sol="; print P_sol
-        (numt, numw) = P_sol.shape
-        for i in range(numt):
-            for j in range(numw):
-                if P_sol[i, j]:
-                    #task i is to run on node j
-                    task_id = task_id_list[i]
-                    node_id = node_id_list[j]
-                    #dispatch task_id on node_id
-                    return node_id
+            P_sol = self.schedule(C, U, workercaps)
+            print "P_sol="; print P_sol
+            (numt, numw) = P_sol.shape
+            for i in range(numt):
+                for j in range(numw):
+                    if P_sol[i, j]:
+                        #task i is to run on node j
+                        task_id = task_id_list[i]
+                        node_id = node_id_list[j]
+                        #dispatch task_id on node_id
+                        return node_id
 
 
-        #we should never be here
-        print "[transfer-cost-aware] We should not be here"
+        #no node was selected or no tasks to schedule
         return None
 
     # input: cost matrix C_wo, usage matrix U_to

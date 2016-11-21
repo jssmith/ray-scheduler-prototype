@@ -41,12 +41,11 @@ def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_wo
             num_workers_executing),
             extra={'timestamp':system_time.get_time()})
         print "{:.6f}: Simulation Error. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
-        print "-1: {} : {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path)
-        return True
+        print "-1: {} : {} : {} : {} : {}".format(system_time.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
         return False
     else:
         print "{:.6f}: Simulation finished successfully. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
-        print "{:.6f}: {} : {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path)
+        print "{:.6f}: {} : {} : {} : {} : {}".format(system_time.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
         return True
 
 def setup_logging():

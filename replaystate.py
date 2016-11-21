@@ -470,6 +470,9 @@ class ComputationDescription():
         validation_dg = DirectedGraph()
         load_dg = DirectedGraph()
         tasks_map = {}
+        total_num_tasks = 0
+        total_num_objects = 0
+        total_objects_size = 0
         for task in tasks:
             tasks_map[task.id()] = task
         for task in tasks:
@@ -492,12 +495,17 @@ class ComputationDescription():
                     #print "EDGE: phase creates object"
                     validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(creates.object_id))
                     load_dg.add_edge(phase, creates.object_id)
+                    total_num_objects += 1
+                    total_objects_size += creates.size
 
                 prev_phase = phase
             for task_result in task.get_results():
                 #print "EDGE: task result edge"
                 validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(task_result.object_id))
                 load_dg.add_edge(prev_phase, task_result.object_id)
+                total_num_objects += 1
+                total_objects_size += task_result.size
+            total_num_tasks += 1
         validation_dg.verify_dag_root(validation_dg.get_id(tasks_map[root_task_str].get_phase(0)))
 
 
@@ -509,7 +517,7 @@ class ComputationDescription():
         #load measure:
         topo_sort_nodes = load_dg.topo_sort(tasks_map[self._root_task].get_phase(0))
         total_tasks_durations = 0
-        total_num_tasks = 0
+        total_num_tasks_verify = 0
         critical_path = {}
         critical_path[tasks_map[self._root_task].get_phase(0)] = tasks_map[self._root_task].get_phase(0).duration
         #print "topo sort nodes is {}".format(topo_sort_nodes)
@@ -517,7 +525,7 @@ class ComputationDescription():
             if isinstance(n, TaskPhase):
                 total_tasks_durations += n.duration
                 if n.phase_id == 0:
-                    total_num_tasks += 1
+                    total_num_tasks_verify += 1
             else:
                 #TODO: this means this is an object_id. We need to have a map of (object_id, size) to calculate the object size average, or total object sizes
             #find critical path:
@@ -530,7 +538,10 @@ class ComputationDescription():
                 else:
                     if critical_path.get(n,0) < critical_path[u]:
                         critical_path[n] = critical_path[u]
-                 
+        
+        if total_num_tasks_verify != total_num_tasks:
+            print "Error: Number of tasks in DAG does not match number of tasks in the trace"
+            return             
         
         critical_path_time = 0
         for c in critical_path.keys():
@@ -538,11 +549,15 @@ class ComputationDescription():
                 critical_path_time = critical_path[c]
 
         normalized_critical_path = critical_path_time / total_tasks_durations
-        print "Total number of tasks is {}".format(total_num_tasks)
+        average_object_size = total_objects_size/total_num_objects
+        print "Total number of tasks is {}, total number of objects is {}, and total object sizes is {}".format(total_num_tasks, total_num_objects, total_objects_size)
         print "Critical path time is {} and total tasks duration is {}, so normalized critical path is {}".format(critical_path_time, total_tasks_durations, normalized_critical_path)
         self.total_num_tasks = total_num_tasks
         self.normalized_critical_path = normalized_critical_path
         self.total_tasks_durations = total_tasks_durations
+        self.total_objects_size = total_objects_size
+        self.total_num_objects = total_num_objects
+        self.average_object_size = average_object_size
 
 
     def get_root_task(self):

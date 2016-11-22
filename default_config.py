@@ -9,7 +9,7 @@ OBJECT_TRANSFER_TIME_COST = 0
 DB_MESSAGE_DELAY = 0
 
 # Scheduler name. Must match a key in replaytrace.py.
-SCHEDULER_NAME = "TRIVIAL"
+SCHEDULER_NAME = "trivial"
 
 # The pathname for the trace file to replay.
 TRACE_FILENAME = "traces/test/rnn_6layers_w3s2n1_attempt2.json"

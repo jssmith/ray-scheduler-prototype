@@ -7,13 +7,13 @@ import logging
 import imp
 
 schedulers = {
-    'TRIVIAL' : TrivialScheduler,
-    'LOCATION_AWARE' : LocationAwareScheduler,
-    'TRIVIAL_LOCAL' : TrivialLocalScheduler,
-    'DELAY' : DelayScheduler,
-    'TRANSFER_AWARE' : TransferCostAwareScheduler,
-    'BASIC_THRESHOLD' : TrivialThresholdLocalScheduler,
-    'TRANSFER_AWARE_LOCAL' : TransferCostAwareLocalScheduler
+    'trivial' : TrivialScheduler,
+    'location_aware' : LocationAwareScheduler,
+    'trivial_local' : TrivialLocalScheduler,
+    'delay' : DelayScheduler,
+    'transfer_aware' : TransferCostAwareScheduler,
+    'basic_threshold' : TrivialThresholdLocalScheduler,
+    'transfer_aware_local' : TransferCostAwareLocalScheduler
 }
 
 def usage():
@@ -24,7 +24,9 @@ def usage():
 
 
 def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay):
-    object_store = replaystate.ObjectStoreRuntime(system_time, object_transfer_time_cost)
+    object_store = replaystate.ObjectStoreRuntime(system_time,
+                                                  object_transfer_time_cost,
+                                                  db_message_delay)
     scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
     schedulers = scheduler_type(system_time, scheduler_db)
     global_scheduler = schedulers.get_global_scheduler(replaystate.EventLoop(system_time))

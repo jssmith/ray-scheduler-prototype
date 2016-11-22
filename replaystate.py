@@ -559,7 +559,10 @@ class ComputationDescription():
                 critical_path_time = critical_path[c]
 
         normalized_critical_path = critical_path_time / total_tasks_durations
-        average_object_size = total_objects_size/total_num_objects
+        if total_num_objects > 0:
+            average_object_size = total_objects_size / total_num_objects
+        else:
+            average_object_size = 0
         print "Total number of tasks is {}, total number of objects is {}, and total object sizes is {}".format(total_num_tasks, total_num_objects, total_objects_size)
         print "Critical path time is {} and total tasks duration is {}, so normalized critical path is {}".format(critical_path_time, total_tasks_durations, normalized_critical_path)
         self.total_num_tasks = total_num_tasks

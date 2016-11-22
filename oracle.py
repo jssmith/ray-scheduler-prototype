@@ -263,7 +263,7 @@ class ValidationError(Exception):
         super(ValidationError, self).__init__(message)
 
 		
-class SystemTime():
+class EventSimulation():
     def __init__(self):
         self._t = 0
         self._scheduled = []
@@ -309,8 +309,8 @@ class Worker:
     def __init__(self, worker_id, node_id):
         self.worker_id = worker_id
         self.node_id = node_id
-        #self._time_line = []    #use SystemTime instead of regular numbers list
-        self.timeline = SystemTime()
+        #self._time_line = []    #use EventSimulation instead of regular numbers list
+        self.timeline = EventSimulation()
         #self._ready_objects = []  #redundant. create a global map instead of this
         self.executing_phase = -1
 	

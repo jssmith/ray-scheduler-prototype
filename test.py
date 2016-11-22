@@ -12,7 +12,7 @@ from replaytrace import simulate
 
 class TestEventLoopTimers(unittest.TestCase):
     def setUp(self):
-        self.ts = SystemTime()
+        self.ts = EventSimulation()
         self.event_loop = EventLoop(self.ts)
         self.callback_contexts = []
 
@@ -150,19 +150,19 @@ class TestValidTrace(unittest.TestCase):
             self.end_timestamp = float(end_timestamp)
 
     class ValidatingLogger():
-        def __init__(self, test, system_time, task_timing):
+        def __init__(self, test, event_simulation, task_timing):
             self._test = test
-            self._system_time = system_time
+            self._event_simulation = event_simulation
             self._task_timing = {}
             for t in task_timing:
                 self._task_timing[t.task_id] = t
             self._timed_tasks = set()
 
         def task_started(self, task_id, node_id):
-            self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._system_time.get_time())
+            self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._event_simulation.get_time())
 
         def task_finished(self, task_id, node_id):
-            self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._system_time.get_time())
+            self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._event_simulation.get_time())
             self._timed_tasks.add(task_id)
 
         def verify_all_finished(self):
@@ -196,10 +196,10 @@ class TestValidTrace(unittest.TestCase):
             num_workers_per_node = int(validation['workersPerNode'])
             transfer_time_cost = float(validation['transferTimeCost'])
             db_message_delay = float(validation['dbMessageDelay'])
-            system_time = replaystate.SystemTime()
-            logger = TestValidTrace.ValidatingLogger(self, system_time, validation['taskTiming'])
+            event_simulation = replaystate.EventSimulation()
+            logger = TestValidTrace.ValidatingLogger(self, event_simulation, validation['taskTiming'])
             scheduler_type = schedulers[scheduler_str]
-            simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+            simulate(computation, scheduler_type, event_simulation, logger, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
             logger.verify_all_finished()
 
 
@@ -252,15 +252,15 @@ class TestReplayStateBase(unittest.TestCase):
         logging.basicConfig(format=logging_format)
         logging.getLogger().setLevel(logging.DEBUG)
 
-        self.system_time = SystemTime()
-        self.event_loop = EventLoop(self.system_time)
-        self.logger = PrintingLogger(self.system_time)
+        self.event_simulation = EventSimulation()
+        self.event_loop = EventLoop(self.event_simulation)
+        self.logger = PrintingLogger(self.event_simulation)
         self.scheduler_db = None
         self.local_scheduler_updates_received = []
         self.global_scheduler_updates_received = []
 
     def _setup_scheduler_db(self, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay):
-        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+        self.scheduler_db = ReplaySchedulerDatabase(self.event_simulation, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
         self.scheduler_db.get_global_scheduler_updates(lambda update: self.global_scheduler_updates_received.append(update))
         self.scheduler_db.get_local_scheduler_updates(0, lambda update: self.local_scheduler_updates_received.append(update))
         self.scheduler_db.schedule_root(0)
@@ -269,7 +269,7 @@ class TestReplayStateBase(unittest.TestCase):
         self.local_scheduler_updates_received = []
         self.global_scheduler_updates_received = []
         self._advance_until(delta)
-        self.assertEquals(end_ts_expected, self.system_time.get_time())
+        self.assertEquals(end_ts_expected, self.event_simulation.get_time())
         self.assertItemsEqual(global_scheduler_updates_expected, self.global_scheduler_updates_received)
         self.assertItemsEqual(local_scheduler_updates_expected, self.local_scheduler_updates_received)
 
@@ -278,16 +278,16 @@ class TestReplayStateBase(unittest.TestCase):
 
     def _advance_until(self, delta):
         self.continue_advance = True
-        self.system_time.schedule_delayed(delta, lambda: self._stop_advance())
-        while self.continue_advance and self.system_time.advance():
+        self.event_simulation.schedule_delayed(delta, lambda: self._stop_advance())
+        while self.continue_advance and self.event_simulation.advance():
             pass
 
     def _end_check(self):
-        start_time = self.system_time.get_time()
+        start_time = self.event_simulation.get_time()
         self.local_scheduler_updates_received = []
         self.global_scheduler_updates_received = []
-        self.system_time.advance_fully()
-        self.assertEquals(start_time, self.system_time.get_time())
+        self.event_simulation.advance_fully()
+        self.assertEquals(start_time, self.event_simulation.get_time())
         self.assertEquals([], self.global_scheduler_updates_received)
         self.assertEquals([], self.local_scheduler_updates_received)
 
@@ -323,7 +323,7 @@ class TestReplayState(TestReplayStateBase):
         self._advance_check(10, 10, local_scheduler_updates_expected, global_scheduler_updates_expected)
         self._end_check()
 
-        self.system_time.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
+        self.event_simulation.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
 
         local_scheduler_updates_expected = []
         global_scheduler_updates_expected = [FinishTaskUpdate(task_id = task_0.id())]
@@ -346,12 +346,12 @@ class TestReplayState(TestReplayStateBase):
         self._advance_check(100, 100, local_scheduler_updates_expected, global_scheduler_updates_expected)
         self._advance_check(100, 200, [], [])
 
-        self.system_time.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
+        self.event_simulation.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
 
         for n in range(2, 11):
             self._advance_check(100, (n + 1) * 100, [], [])
 
-        self.assertEquals(1100, self.system_time.get_time())
+        self.assertEquals(1100, self.event_simulation.get_time())
         self._advance_check(101, 1201, [], [FinishTaskUpdate(task_id = task_0.id())])
 
         self._end_check()
@@ -365,8 +365,8 @@ class TestReplayState(TestReplayStateBase):
         task_1 = Task(task_id = 2, phases = [phase_1_0], results = [TaskResult(object_id = 2, size = 100)])
 
         computation = ComputationDescription(root_task = 1, tasks = [task_0, task_1])
-        system_time = SystemTime()
-        event_loop = EventLoop(system_time)
+        event_simulation = EventSimulation()
+        event_loop = EventLoop(event_simulation)
         num_nodes = 1
         num_workers_per_node = 2
         transfer_time_cost = 0
@@ -378,8 +378,8 @@ class TestReplayState(TestReplayStateBase):
         self._advance_check(100, 100, local_scheduler_updates_expected, global_scheduler_updates_expected)
         self._advance_check(100, 200, [], [])
 
-        self.system_time.schedule_delayed(phase_0_0.submits[0].time_offset, lambda: self.scheduler_db.submit(task_1, 0, False))
-        self.system_time.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
+        self.event_simulation.schedule_delayed(phase_0_0.submits[0].time_offset, lambda: self.scheduler_db.submit(task_1, 0, False))
+        self.event_simulation.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
 
         local_scheduler_updates_expected = []
         global_scheduler_updates_expected = [ForwardTaskUpdate(task = task_1, submitting_node_id = 0, is_scheduled_locally = False),
@@ -394,7 +394,7 @@ class TestReplayState(TestReplayStateBase):
         global_scheduler_updates_expected = []
         self._advance_check(100, 500, local_scheduler_updates_expected, global_scheduler_updates_expected)
 
-        self.system_time.schedule_delayed(phase_1_0.duration, lambda: self.scheduler_db.finished(task_1.id()))
+        self.event_simulation.schedule_delayed(phase_1_0.duration, lambda: self.scheduler_db.finished(task_1.id()))
 
         local_scheduler_updates_expected = []
         global_scheduler_updates_expected = [FinishTaskUpdate(task_id = task_1.id())]
@@ -406,9 +406,9 @@ class TestReplayState(TestReplayStateBase):
 class TestReplayStateTimingDetail(TestReplayStateBase):
 
     def _setup_scheduler_db(self, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay):
-        self.scheduler_db = ReplaySchedulerDatabase(self.system_time, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
-        self.scheduler_db.get_global_scheduler_updates(lambda update: self.global_scheduler_updates_received.append((self.system_time.get_time(), update)))
-        self.scheduler_db.get_local_scheduler_updates(0, lambda update: self.local_scheduler_updates_received.append((self.system_time.get_time(), update)))
+        self.scheduler_db = ReplaySchedulerDatabase(self.event_simulation, self.logger, computation, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+        self.scheduler_db.get_global_scheduler_updates(lambda update: self.global_scheduler_updates_received.append((self.event_simulation.get_time(), update)))
+        self.scheduler_db.get_local_scheduler_updates(0, lambda update: self.local_scheduler_updates_received.append((self.event_simulation.get_time(), update)))
         self.scheduler_db.schedule_root(0)
 
     def testMessageDelay(self):
@@ -426,7 +426,7 @@ class TestReplayStateTimingDetail(TestReplayStateBase):
         self._advance_check(10, 10, local_scheduler_updates_expected, global_scheduler_updates_expected)
         self._end_check()
 
-        self.system_time.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
+        self.event_simulation.schedule_delayed(phase_0_0.duration, lambda: self.scheduler_db.finished(task_0.id()))
 
         local_scheduler_updates_expected = []
         global_scheduler_updates_expected = [(11.001, FinishTaskUpdate(task_id = task_0.id()))]
@@ -436,12 +436,12 @@ class TestReplayStateTimingDetail(TestReplayStateBase):
 class TestObjectStoreRuntime(unittest.TestCase):
 
     def setUp(self):
-        self.system_time = SystemTime()
-        self.os = ObjectStoreRuntime(self.system_time, .001, 0)
+        self.event_simulation = EventSimulation()
+        self.os = ObjectStoreRuntime(self.event_simulation, .001, 0)
         self.last_ready = defaultdict(list)
 
     def _fn_ready(self, object_id, node_id):
-        self.last_ready[(object_id, node_id)].append(self.system_time.get_time())
+        self.last_ready[(object_id, node_id)].append(self.event_simulation.get_time())
 
     def _require_object(self, object_id, node_id):
         self.os.require_object(object_id, node_id, lambda: self._fn_ready(object_id, node_id))
@@ -460,35 +460,35 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self.assertItemsEqual([0], self.os.get_locations('1'))
 
     def test_moved_object(self):
-        self.assertEquals(0, self.system_time.get_time())
+        self.assertEquals(0, self.event_simulation.get_time())
         self._add_object('1', 0, 200)
         self.assertItemsEqual([0], self.os.get_locations('1'))
 
         self.assertFalse(self.os.is_local('1', 1))
 
         self._require_object('1', 0)
-        self.system_time.advance()
+        self.event_simulation.advance()
         self.assertEquals([0], self._last_ready('1', 0))
 
         self._require_object('1', 1)
-        self.system_time.advance()
+        self.event_simulation.advance()
         self.assertEquals([0.2], self._last_ready('1', 1))
 
     def test_delayed_object(self):
-        self.assertEquals(0, self.system_time.get_time())
+        self.assertEquals(0, self.event_simulation.get_time())
 
         self._require_object('1', 0)
         self.assertEquals([], self._last_ready('1', 0))
 
         self._add_object('1', 0, 100)
-        self.system_time.advance()
+        self.event_simulation.advance()
         self.assertEquals([0], self._last_ready('1', 0))
 
         self._require_object('2', 1)
         self._require_object('2', 0)
         self._require_object('1', 1)
 
-        self.system_time.advance()
+        self.event_simulation.advance()
 
         self.assertEquals([], self._last_ready('2',1))
         self.assertEquals([], self._last_ready('2',0))
@@ -498,7 +498,7 @@ class TestObjectStoreRuntime(unittest.TestCase):
 
         self.assertEquals([0.1], self._last_ready('2', 1))
 
-        self.system_time.advance()
+        self.event_simulation.advance()
 
         self.assertEquals([0.4], self._last_ready('2', 0))
 
@@ -509,8 +509,8 @@ ObjectAddition = namedtuple('ObjectAddition', ['time_offset', 'object_id', 'node
 class TestNodeRuntime(unittest.TestCase):
 
     class ObjectStore():
-        def __init__(self, system_time, test):
-            self._system_time = system_time
+        def __init__(self, event_simulation, test):
+            self._event_simulation = event_simulation
             self._test = test
             self._object_locations = defaultdict(set)
 
@@ -519,12 +519,12 @@ class TestNodeRuntime(unittest.TestCase):
         def _install_object(self, object_id, node_id):
             self._object_locations[str(object_id)].add(str(node_id))
             for handler in self._awaiting_objects[(str(object_id), str(node_id))]:
-                self._system_time.schedule_immediate(handler)
+                self._event_simulation.schedule_immediate(handler)
 
         def add_object(self, object_id, node_id, object_size):
             self._test.objects_added.append(
                     ObjectAddition(
-                        self._system_time.get_time(),
+                        self._event_simulation.get_time(),
                         object_id, node_id, object_size
                         )
                     )
@@ -541,14 +541,14 @@ class TestNodeRuntime(unittest.TestCase):
 
         def require_object(self, object_id, node_id, on_done):
             if self.is_local(object_id, node_id):
-                self._system_time.schedule_immediate(on_done)
+                self._event_simulation.schedule_immediate(on_done)
             else:
                 self._awaiting_objects[(str(object_id), str(node_id))].append(on_done)
 
     class RecordingLogger():
-        def __init__(self, system_time):
+        def __init__(self, event_simulation):
 #            self._test = test
-            self._system_time = system_time
+            self._event_simulation = event_simulation
             #self._task_timing = {}
             #for t in task_timing:
             #    self._task_timing[t.task_id] = t
@@ -556,11 +556,11 @@ class TestNodeRuntime(unittest.TestCase):
 
         def task_started(self, task_id, node_id):
             pass
-            #self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._system_time.get_time())
+            #self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._event_simulation.get_time())
 
         def task_finished(self, task_id, node_id):
             pass
-            #self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._system_time.get_time())
+            #self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._event_simulation.get_time())
             #self._timed_tasks.add(task_id)
 
 
@@ -571,9 +571,9 @@ class TestNodeRuntime(unittest.TestCase):
 #        FORMAT = '%(asctime)-15s %(clientip)s %(user)-8s %(message)s'
 
 
-        self.system_time = SystemTime()
-        self.object_store = self.ObjectStore(self.system_time, self)
-        self.logger = self.RecordingLogger(self.system_time)
+        self.event_simulation = EventSimulation()
+        self.object_store = self.ObjectStore(self.event_simulation, self)
+        self.logger = self.RecordingLogger(self.event_simulation)
 
         self.updates = []
         self.objects_added = []
@@ -583,18 +583,18 @@ class TestNodeRuntime(unittest.TestCase):
     def _setup_node_runtime(self, computation, node_id, num_workers):
         self.node_id = node_id
         self.num_workers = num_workers
-        self.node_runtime = replaystate.NodeRuntime(self.system_time, self.object_store, self.logger, computation, node_id, num_workers)
+        self.node_runtime = replaystate.NodeRuntime(self.event_simulation, self.object_store, self.logger, computation, node_id, num_workers)
         self.node_runtime.get_updates(lambda update: self._update_handler(update))
 
     def _update_handler(self, update):
-        self.updates.append((self.system_time.get_time(), update))
+        self.updates.append((self.event_simulation.get_time(), update))
 
     def _advance(self):
-        while self.system_time.advance():
+        while self.event_simulation.advance():
             pass
 
     def _get_workers(self):
-        self.free_workers.append((self.system_time.get_time(), self.node_runtime.free_workers()))
+        self.free_workers.append((self.event_simulation.get_time(), self.node_runtime.free_workers()))
 
     def test_one_task(self):
         phase_0_0 = TaskPhase(phase_id = 0, depends_on = [], submits = [], duration = 1.0)
@@ -610,7 +610,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.node_runtime.send_to_dispatcher(task_0, 0)
 
-        self.system_time.schedule_delayed(0.5, lambda: self._get_workers())
+        self.event_simulation.schedule_delayed(0.5, lambda: self._get_workers())
 
         self._advance()
 
@@ -644,7 +644,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.node_runtime.send_to_dispatcher(task_0, 0)
 
-        self.system_time.schedule_delayed(0.5, lambda: self._get_workers())
+        self.event_simulation.schedule_delayed(0.5, lambda: self._get_workers())
 
         self._advance()
 
@@ -692,7 +692,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.node_runtime.send_to_dispatcher(task_0, 0)
 
-        self.system_time.schedule_delayed(2.0, lambda: self._get_workers())
+        self.event_simulation.schedule_delayed(2.0, lambda: self._get_workers())
 
         self._advance()
 
@@ -729,7 +729,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.node_runtime.send_to_dispatcher(task_0, 0)
 
-        self.system_time.schedule_delayed(2.0, lambda: self._get_workers())
+        self.event_simulation.schedule_delayed(2.0, lambda: self._get_workers())
 
         self._advance()
 
@@ -855,13 +855,13 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
 
         self.assertItemsEqual([(0.4, SubmitTaskUpdate(task_1))], self.updates)
-        self.assertEquals(0.9, self.system_time.get_time())
+        self.assertEquals(0.9, self.event_simulation.get_time())
 
         self.updates = []
         self.node_runtime.send_to_dispatcher(task_1, 0)
         self._advance()
         self.assertItemsEqual([(2.4, FinishTaskUpdate(task_1.id()))], self.updates)
-        self.assertEquals(2.4, self.system_time.get_time())
+        self.assertEquals(2.4, self.event_simulation.get_time())
 
         self.updates = []
         self.object_store._install_object(1, node_id)
@@ -888,14 +888,14 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
 
         self.assertItemsEqual([(0.4, SubmitTaskUpdate(task_1)), (0.4, SubmitTaskUpdate(task_2))], self.updates)
-        self.assertEquals(0.9, self.system_time.get_time())
+        self.assertEquals(0.9, self.event_simulation.get_time())
 
         self.updates = []
         self.node_runtime.send_to_dispatcher(task_1, 0)
         self.node_runtime.send_to_dispatcher(task_2, 0)
         self._advance()
         self.assertItemsEqual([(3.4, FinishTaskUpdate(task_1.id())), (1.4, FinishTaskUpdate(task_2.id()))], self.updates)
-        self.assertEquals(3.4, self.system_time.get_time())
+        self.assertEquals(3.4, self.event_simulation.get_time())
 
         self.updates = []
         self.object_store._install_object(1, node_id)

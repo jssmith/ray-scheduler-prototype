@@ -2,6 +2,7 @@ import numpy as np
 import ray
 import os
 import argparse
+import tensorflow as tf
 #import boto3
 
 import alexnet
@@ -9,6 +10,8 @@ import alexnet
 # Arguments to specify where the imagenet data is stored.
 parser = argparse.ArgumentParser(description="Run the AlexNet example.")
 parser.add_argument("--image_reps", default=1, type=int, help="The number of repetitions running of the image set")
+parser.add_argument("--iterations", default=10, type=int, help="The number of iterations to run")
+parser.add_argument("--num_batches",default=4, type=int, help="The number of images to digest in one batch")
 #parser.add_argument("--node-ip-address", default=None, type=str, help="The IP address of this node.")
 #parser.add_argument("--scheduler-address", default=None, type=str, help="The address of the scheduler.")
 #parser.add_argument("--s3-bucket", required=True, type=str, help="Name of the bucket that contains the image data.")
@@ -71,11 +74,12 @@ if __name__ == "__main__":
   _, sess, application, _, _, _, _, placeholders, init_all_variables, get_weights, set_weights = ray.reusables.net_vars
   # Initialize the network and optimizer weights. This is only run once on the
   # driver. We initialize the weights manually on the workers.
+  sess.run(tf.initialize_all_variables())
   sess.run(init_all_variables)
   print "Initialized network weights."
 
   iteration = 0
-  while iteration<10:
+  while iteration<args.iterations:
     # Extract weights from the local copy of the network.
     weights = get_weights()
     # Put weights in the object store.
@@ -87,7 +91,7 @@ if __name__ == "__main__":
 
     # Launch tasks in parallel to compute the gradients for some batches.
     gradient_ids = []
-    num_batches = 4
+    num_batches = args.num_batches
     for i in range(num_batches):
       # Choose a random batch and use it to compute the gradient of the loss.
       x_id, y_id = batches[np.random.randint(len(batches))]
@@ -99,7 +103,7 @@ if __name__ == "__main__":
     # Fetch the gradients. This blocks until the gradients have been computed.
     gradient_sets = ray.get(gradient_ids)
     # Average the gradients over all of the tasks.
-    mean_gradients = [np.mean([gradient_set[i] for gradient_set in gradient_sets], axis=0) for i in range(len(weights))]
+    mean_gradients = [np.mean([gradient_set[i] for gradient_set in gradient_sets], axis=0) for i in range(len(gradient_sets[0]))]
     # Use the gradients to update the network.
     sess.run(application, feed_dict=dict(zip(placeholders, mean_gradients)))
 

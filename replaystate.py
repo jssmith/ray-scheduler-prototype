@@ -194,9 +194,18 @@ class ObjectStoreRuntime():
 
 class ObjectDescription():
     def __init__(self, object_id, node_id, size):
-        self.object_id = object_id
+        self.object_id = str(object_id)
         self.node_id = node_id
         self.size = size
+
+    def __str__(self):
+        return "ObjectDescription({}, {}, {})".format(self.object_id, self.node_id, self.size)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.object_id == other.object_id and self.node_id == other.node_id and self.size == other.size
+        else:
+            return False
 
 
 class NodeRuntime():

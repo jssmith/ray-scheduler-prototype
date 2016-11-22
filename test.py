@@ -649,7 +649,12 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
 
         self.assertItemsEqual([(0.5, 1)], self.free_workers)
-        self.assertItemsEqual([(1.0, FinishTaskUpdate(task_0.id()))], self.updates)
+        self.assertItemsEqual([
+            (1.0, FinishTaskUpdate(task_0.id())),
+            (0.5, ObjectReadyUpdate(ObjectDescription(
+                object_id = 0, node_id = node_id, size = 100),
+                node_id)),
+            ], self.updates)
         put_addition = ObjectAddition(
                 put_event.time_offset,
                 put_event.object_id,
@@ -692,7 +697,14 @@ class TestNodeRuntime(unittest.TestCase):
         self._advance()
 
         self.assertItemsEqual([(2.0, 1)], self.free_workers)
-        self.assertItemsEqual([(2.5, FinishTaskUpdate(task_0.id()))], self.updates)
+        self.assertItemsEqual([
+            (2.5, FinishTaskUpdate(task_0.id())),
+            (0.5, ObjectReadyUpdate(ObjectDescription(
+                0, node_id, 100),
+                node_id)),
+            (1.5, ObjectReadyUpdate(ObjectDescription(
+                1, node_id, 200),
+                node_id))], self.updates)
         self.assertItemsEqual([ObjectAddition(0.5, '0', 1, 100),
                                ObjectAddition(1.5, '1', 1, 200),
                                ObjectAddition(2.5, '2', 1, 300)],

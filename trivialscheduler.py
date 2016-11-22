@@ -23,9 +23,10 @@ class GlobalSchedulerState():
         # Map from task_id to node id
         self.executing_tasks = {}
 
-        # Map of object id to node id
-        # TODO:  - add the sizes of object ids [atumanov]
+        # Map of object id to list of node ids.
         self.finished_objects = defaultdict(list)
+        # Map of object id to object size in bytes.
+        self.finished_object_sizes = {}
         #TODO: calculate the node_id -> object_id inverse map [atumanov]
 
         # Map from task id to Task object
@@ -69,7 +70,8 @@ class GlobalSchedulerState():
             self._register_node(update.node_id, update.num_workers)
         elif isinstance(update, ObjectReadyUpdate):
             self._object_ready(update.object_description.object_id,
-                               update.submitting_node_id)
+                               update.submitting_node_id,
+                               update.size)
         else:
             raise NotImplementedError('Unknown update {}'.format(update.__class__.__name__))
 
@@ -105,10 +107,11 @@ class GlobalSchedulerState():
         del self.executing_tasks[task_id]
         for result in self.tasks[task_id].get_results():
             object_id = result.object_id
-            self._object_ready(object_id, node_id)
+            self._object_ready(object_id, node_id, result.size)
 
-    def _object_ready(self, object_id, node_id):
+    def _object_ready(self, object_id, node_id, object_size):
         self.finished_objects[object_id].append(node_id)
+        self.finished_object_sizes[object_id] = object_size
         if object_id in self._awaiting_completion.keys():
             pending_task_ids = self._awaiting_completion[object_id]
             del self._awaiting_completion[object_id]

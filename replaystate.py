@@ -108,12 +108,13 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
 
 
 class ObjectStoreRuntime():
-    def __init__(self, system_time, data_transfer_time_cost):
+    def __init__(self, system_time, data_transfer_time_cost, db_message_delay):
         self._system_time = system_time
         self._objects_locations = defaultdict(set)
         self._object_sizes = {}
         self._update_handlers = defaultdict(list)
         self._data_transfer_time_cost = data_transfer_time_cost
+        self._db_message_delay = db_message_delay
         self._awaiting_completion = defaultdict(list)
         self._unready_objects_locations = defaultdict(set)
 
@@ -147,9 +148,12 @@ class ObjectStoreRuntime():
         return node_id in self._objects_locations[object_id]
 
     def get_object_size(self, node_id, object_id, result_handler):
-	# TODO(swang): Schedule the result handler after some delay.
-        #self._system_time.schedule_delayed(delay, lambda: result_handler(self._object_sizes(object_id)))
-        return self._object_sizes[object_id]
+        handler = lambda: result_handler(self._object_sizes(object_id))
+        # Add a delay if the object is not local to the node that requested it.
+        if node_id in self._object_locations:
+            self._system_time.schedule_immediate(handler)
+        else:
+            self._system_time.schedule_delayed(self._db_message_delay, handler)
 
     def _yield_object_ready_update(self, object_id, node_id, object_size):
         self._yield_update(node_id, ObjectReadyUpdate(ObjectDescription(object_id, node_id, object_size), node_id))
@@ -222,8 +226,9 @@ class NodeRuntime():
         return self._object_store.is_local(object_id, self.node_id)
 
 
-    def get_object_size(self, object_id):
-        return self._object_store.get_object_size(self.node_id, object_id, -1)
+    def get_object_size(self, object_id, handler):
+        return self._object_store.get_object_size(self.node_id, object_id,
+                                                  handler)
 
     def get_dispatch_queue_size(self):
         return len(self._queue)
@@ -559,7 +564,10 @@ class ComputationDescription():
                 critical_path_time = critical_path[c]
 
         normalized_critical_path = critical_path_time / total_tasks_durations
-        average_object_size = total_objects_size/total_num_objects
+        if total_num_objects > 0:
+            average_object_size = total_objects_size / total_num_objects
+        else:
+            average_object_size = 0
         print "Total number of tasks is {}, total number of objects is {}, and total object sizes is {}".format(total_num_tasks, total_num_objects, total_objects_size)
         print "Critical path time is {} and total tasks duration is {}, so normalized critical path is {}".format(critical_path_time, total_tasks_durations, normalized_critical_path)
         self.total_num_tasks = total_num_tasks

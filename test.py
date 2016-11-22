@@ -210,7 +210,8 @@ def valid_trace_suite():
         'two_chained_tasks',
         'two_parallel_tasks',
         'two_phase',
-        'two_results']
+        'two_results',
+        'no_result']
     return unittest.TestSuite(map(TestValidTrace, test_names))
 
 def script_path():
@@ -436,7 +437,7 @@ class TestObjectStoreRuntime(unittest.TestCase):
 
     def setUp(self):
         self.system_time = SystemTime()
-        self.os = ObjectStoreRuntime(self.system_time, .001)
+        self.os = ObjectStoreRuntime(self.system_time, .001, 0)
         self.last_ready = defaultdict(list)
 
     def _fn_ready(self, object_id, node_id):

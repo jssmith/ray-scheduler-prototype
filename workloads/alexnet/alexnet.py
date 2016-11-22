@@ -61,7 +61,7 @@ def load_tarfile_from_s3(s3_key, size=[]):
     #chunk = response["Body"].read(1024 * 8)
   #output.seek(0) # go to the beginning of the .tar file
   #tar = tarfile.open(mode="r", fileobj=output)
-  tar = tarfile.open(os.getcwd() + 'workloads/alexnet/' + s3_key, mode="r")
+  tar = tarfile.open(os.getcwd() + '/workloads/alexnet/' + s3_key, mode="r")
   return load_chunk(tar, size=size if size != [] else None)
 
 #def load_tarfiles_from_s3(bucket, s3_keys, size=[]):

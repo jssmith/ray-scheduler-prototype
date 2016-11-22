@@ -1,0 +1,34 @@
+{
+  "rootTask": 1,
+  "tasks": [
+    {
+      "taskId": 1,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "submits": [],
+          "duration": 1.0,
+          "creates": [
+            {
+              "timeOffset": 0.5,
+              "objectId": 1,
+              "size": 100
+            },
+            {
+              "timeOffset": 0.6,
+              "objectId": 1,
+              "size": 200
+            }
+          ]
+        }
+      ],
+      "results": [
+        {
+          "objectId": 1,
+          "size": 100
+        }
+      ]
+    }
+  ]
+}

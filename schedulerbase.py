@@ -79,11 +79,11 @@ class ObjectReadyUpdate():
         self.submitting_node_id = str(submitting_node_id)
 
     def __str__(self):
-        return 'ObjectReadyUpdate({},{})'.format(self.object_description.object_id, self.submitting_node_id)
+        return 'ObjectReadyUpdate({},{})'.format(str(self.object_description), self.submitting_node_id)
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            return self._task == other._task and self._submitting_node_id == other._submitting_node_id
+            return self.object_description == other.object_description and self.submitting_node_id == other.submitting_node_id
         else:
             return False
 

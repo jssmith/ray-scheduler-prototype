@@ -4,20 +4,23 @@ import json
 
 import sys
 import logging
+import imp
 
 schedulers = {
-    'trivial' : TrivialScheduler,
-    'location_aware' : LocationAwareScheduler,
-    'trivial_local' : TrivialLocalScheduler,
-    'delay' : DelayScheduler,
-    'transfer_aware' : TransferCostAwareScheduler,
-    'basic_threshold' : TrivialThresholdLocalScheduler,
-    'transfer_aware_local' : TransferCostAwareLocalScheduler
+    'TRIVIAL' : TrivialScheduler,
+    'LOCATION_AWARE' : LocationAwareScheduler,
+    'TRIVIAL_LOCAL' : TrivialLocalScheduler,
+    'DELAY' : DelayScheduler,
+    'TRANSFER_AWARE' : TransferCostAwareScheduler,
+    'BASIC_THRESHOLD' : TrivialThresholdLocalScheduler,
+    'TRANSFER_AWARE_LOCAL' : TransferCostAwareLocalScheduler
 }
 
 def usage():
-    print 'Usage: test_scheduler num_nodes num_workers_per_node object_transfer_time_cost db_message_delay scheduler input.json'
-    print 'Available schedulers: '; print schedulers.keys()
+    print("Usage: python replaytrace.py <config filename>; example config can "
+          "be found in default_config.py")
+    print("OR test_scheduler num_nodes num_workers_per_node "
+          "object_transfer_time_cost db_message_delay scheduler input.json")
 
 
 def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay):
@@ -55,32 +58,55 @@ def setup_logging():
     logging.basicConfig(format=logging_format)
     logging.getLogger().setLevel(logging.DEBUG)
 
-def run_replay(args):
-    setup_logging()
-
-    if len(args) != 7:
-        usage()
+def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
+               db_message_delay, scheduler_name, trace_filename):
+    scheduler_cls = schedulers.get(scheduler_name)
+    if scheduler_cls is None:
+        print 'Error - unrecognized scheduler'
         sys.exit(1)
+    f = open(trace_filename, 'r')
+    computation = json.load(f, object_hook=replaystate.computation_decoder)
+    f.close()
 
+    setup_logging()
+    system_time = replaystate.SystemTime()
+    logger = replaystate.PrintingLogger(system_time)
+    simulate(computation, scheduler_cls, system_time, logger, num_nodes,
+             num_workers_per_node, object_transfer_time_cost, db_message_delay)
+
+def run_replay_from_sys_argv(args):
     num_nodes = int(args[1])
     num_workers_per_node = int(args[2])
     object_transfer_time_cost = float(args[3])
     db_message_delay = float(args[4])
-    scheduler_str = args[5]
-    if scheduler_str not in schedulers.keys():
-        usage()
-        print 'Error - unrecognized scheduler'
-        sys.exit(1)
-    input_fn = args[6]
-    print input_fn
-    f = open(input_fn, 'r')
-    computation = json.load(f, object_hook=replaystate.computation_decoder)
-    f.close()
+    scheduler_name = args[5]
+    trace_filename = args[6]
+    run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
+               db_message_delay, scheduler_name, trace_filename)
 
-    system_time = replaystate.SystemTime()
-    logger = replaystate.PrintingLogger(system_time)
-    simulate(computation, schedulers[scheduler_str], system_time, logger, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
+def run_replay_from_config(config_filename):
+    import default_config
+    config = imp.load_source("config", config_filename)
 
+    num_nodes = getattr(config, 'NUM_NODES', default_config.NUM_NODES)
+    num_workers_per_node = getattr(config, 'NUM_WORKERS_PER_NODE',
+                                   default_config.NUM_WORKERS_PER_NODE)
+    object_transfer_time_cost = getattr(config, 'OBJECT_TRANSFER_TIME_COST',
+                                        default_config.OBJECT_TRANSFER_TIME_COST)
+    db_message_delay = getattr(config, 'DB_MESSAGE_DELAY',
+                               default_config.DB_MESSAGE_DELAY)
+    scheduler_name = getattr(config, 'SCHEDULER_NAME',
+                             default_config.SCHEDULER_NAME)
+    trace_filename = getattr(config, 'TRACE_FILENAME',
+                             default_config.TRACE_FILENAME)
+    run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
+               db_message_delay, scheduler_name, trace_filename)
 
 if __name__ == '__main__':
-    run_replay(sys.argv)
+    if len(sys.argv) == 2:
+        run_replay_from_config(sys.argv[1])
+    elif len(sys.argv) == 7:
+        run_replay_from_sys_argv(sys.argv)
+    else:
+        usage()
+        sys.exit(-1)

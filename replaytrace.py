@@ -10,7 +10,9 @@ schedulers = {
     'location_aware' : LocationAwareScheduler,
     'trivial_local' : TrivialLocalScheduler,
     'delay' : DelayScheduler,
-    'transfer_aware' : TransferCostAwareScheduler
+    'transfer_aware' : TransferCostAwareScheduler,
+    'basic_threshold' : TrivialThresholdLocalScheduler,
+    'transfer_aware_local' : TransferCostAwareLocalScheduler
 }
 
 def usage():
@@ -23,13 +25,30 @@ def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_wo
     scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
     schedulers = scheduler_type(system_time, scheduler_db)
     global_scheduler = schedulers.get_global_scheduler(replaystate.EventLoop(system_time))
+    local_runtimes = {}
     local_schedulers = {}
     for node_id in range(0, num_nodes):
         local_runtime = replaystate.NodeRuntime(system_time, object_store, logger, computation, node_id, num_workers_per_node)
+        local_runtimes[node_id] = local_runtime
         local_event_loop = replaystate.EventLoop(system_time)
         local_schedulers[node_id] = schedulers.get_local_scheduler(local_runtime, local_event_loop)
     scheduler_db.schedule_root(0)
     system_time.advance_fully()
+    num_workers_executing = 0
+    for node_id, local_runtime in local_runtimes.items():
+        num_workers_executing += local_runtime.num_workers_executing
+    if num_workers_executing > 0:
+        pylogger = logging.getLogger(__name__+'.simulate')
+        pylogger.debug("failed to execute fully".format(
+            num_workers_executing),
+            extra={'timestamp':system_time.get_time()})
+        print "{:.6f}: Simulation Error. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
+        print "-1: {} : {} : {} : {} : {}".format(system_time.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
+        return False
+    else:
+        print "{:.6f}: Simulation finished successfully. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(system_time.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
+        print "{:.6f}: {} : {} : {} : {} : {}".format(system_time.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
+        return True
 
 def setup_logging():
     logging_format = '%(timestamp).6f %(name)s %(message)s'

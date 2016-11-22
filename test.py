@@ -210,7 +210,8 @@ def valid_trace_suite():
         'two_chained_tasks',
         'two_parallel_tasks',
         'two_phase',
-        'two_results']
+        'two_results',
+        'no_result']
     return unittest.TestSuite(map(TestValidTrace, test_names))
 
 def script_path():

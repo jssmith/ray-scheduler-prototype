@@ -2,6 +2,7 @@ import sys
 import heapq
 import itertools
 import logging
+import types
 
 from collections import defaultdict
 from collections import deque
@@ -134,7 +135,7 @@ class ObjectStoreRuntime():
         self._object_sizes[object_id] = object_size
 
     def get_unready_locations(self, object_id):
-        return self._undready_objects_locations[object_id]
+        return self._unready_objects_locations[object_id]
 
     def get_locations(self, object_id):
         return self._objects_locations[object_id]
@@ -145,8 +146,10 @@ class ObjectStoreRuntime():
     def is_local(self, object_id, node_id):
         return node_id in self._objects_locations[object_id]
 
-    def get_object_size(self, object_id):
-        return self._object_sizes(object_id)
+    def get_object_size(self, node_id, object_id, result_handler):
+	# TODO(swang): Schedule the result handler after some delay.
+        #self._system_time.schedule_delayed(delay, lambda: result_handler(self._object_sizes(object_id)))
+        return self._object_sizes[object_id]
 
     def _yield_object_ready_update(self, object_id, node_id, object_size):
         self._yield_update(node_id, ObjectReadyUpdate(ObjectDescription(object_id, node_id, object_size), node_id))
@@ -205,7 +208,9 @@ class NodeRuntime():
         self.num_workers_executing = 0
 
         self._time_buffer_size = 20
-        self._task_start_times = deque([], self._time_buffer_size)    
+        self._task_start_times = deque([], self._time_buffer_size)   
+        self._task_times = deque([], self._time_buffer_size)
+        self._task_start_times_map = {}
 
         self._queue_seq = 0
         self._queue = []
@@ -218,13 +223,18 @@ class NodeRuntime():
 
 
     def get_object_size(self, object_id):
-        return self._object_store.get_object_size(object_id)
+        return self._object_store.get_object_size(self.node_id, object_id, -1)
 
     def get_dispatch_queue_size(self):
         return len(self._queue)
 
     def get_node_eff_rate(self):
+        if (self._task_start_times[-1] - self._task_start_times[0]) == 0 :
+            return 0
         return len(self._task_start_times) / (self._task_start_times[-1] - self._task_start_times[0])
+
+    def get_avg_task_time(self):
+        return 1 if len(self._task_times) == 0 else sum(self._task_times) / len(self._task_times)
 
     def send_to_dispatcher(self, task, priority):
         self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority), extra={'timestamp':self._system_time.get_time()})
@@ -270,6 +280,7 @@ class NodeRuntime():
 
     def _start_task(self, task_id):
         self._task_start_times.append(self._system_time.get_time())
+        self._task_start_times_map[task_id] = self._system_time.get_time()
         self.num_workers_executing += 1
         self._logger.task_started(task_id, self.node_id)
         self._internal_scheduler_schedule(task_id, 0)
@@ -290,6 +301,10 @@ class NodeRuntime():
             self._system_time.schedule_delayed(
                     put_event.time_offset,
                     lambda: self._object_store.add_object(put_event.object_id, self.node_id, put_event.size)
+                    )
+            self._system_time.schedule_delayed(
+                    put_event.time_offset,
+                    lambda: self._yield_update(ObjectReadyUpdate(ObjectDescription(put_event.object_id, self.node_id, put_event.size), self.node_id))
                     )
         for schedule_task in task_phase.submits:
             self._system_time.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
@@ -325,6 +340,8 @@ class NodeRuntime():
 #                print "XXX finished task {} number of phases is {}".format(update.task_id, num_phases)
                 self._yield_update(FinishTaskUpdate(update.task_id))
                 self.num_workers_executing -= 1
+                self._task_times.append(self._system_time.get_time() - self._task_start_times_map.get(update.task_id, 0)) 
+                print "task_times: {}".format(self._task_times)
                 self._system_time.schedule_immediate(lambda: self._process_tasks())
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
@@ -460,8 +477,12 @@ class ComputationDescription():
                         raise ValidationError('Dependency on missing object id {}'.format(object_id))
 
         # no cycles, everything reachable from roots
-        dg = DirectedGraph()
+        validation_dg = DirectedGraph()
+        load_dg = DirectedGraph()
         tasks_map = {}
+        total_num_tasks = 0
+        total_num_objects = 0
+        total_objects_size = 0
         for task in tasks:
             tasks_map[task.id()] = task
         for task in tasks:
@@ -470,23 +491,87 @@ class ComputationDescription():
                 phase = task.get_phase(phase_id)
                 if prev_phase:
                     #print "EDGE: previous phase edge"
-                    dg.add_edge(prev_phase, phase)
+                    validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(phase))
+                    load_dg.add_edge(prev_phase, phase)
                 for object_id in phase.depends_on:
                     #print "EDGE: phase dependency edge"
-                    dg.add_edge(object_id, phase)
+                    validation_dg.add_edge(validation_dg.get_id(object_id), validation_dg.get_id(phase))
+                    load_dg.add_edge(object_id, phase)
                 for submits in phase.submits:
                     #print "EDGE: phase schedules edge"
-                    dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
-                    # TODO object id produced in scheduling
+                    validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(tasks_map[submits.task_id].get_phase(0)))
+                    load_dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
+                for creates in phase.creates:
+                    #print "EDGE: phase creates object"
+                    validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(creates.object_id))
+                    load_dg.add_edge(phase, creates.object_id)
+                    total_num_objects += 1
+                    total_objects_size += creates.size
+
                 prev_phase = phase
             for task_result in task.get_results():
                 #print "EDGE: task result edge"
-                dg.add_edge(prev_phase, task_result.object_id)
-        dg.verify_dag_root(tasks_map[root_task_str].get_phase(0))
+                validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(task_result.object_id))
+                load_dg.add_edge(prev_phase, task_result.object_id)
+                total_num_objects += 1
+                total_objects_size += task_result.size
+            total_num_tasks += 1
+        validation_dg.verify_dag_root(validation_dg.get_id(tasks_map[root_task_str].get_phase(0)))
+
 
         # verification passed so initialize
         self._root_task = root_task_str
         self._tasks = tasks_map
+
+
+        #load measure:
+        topo_sort_nodes = load_dg.topo_sort(tasks_map[self._root_task].get_phase(0))
+        total_tasks_durations = 0
+        total_num_tasks_verify = 0
+        critical_path = {}
+        critical_path[tasks_map[self._root_task].get_phase(0)] = tasks_map[self._root_task].get_phase(0).duration
+        #print "topo sort nodes is {}".format(topo_sort_nodes)
+        for n in topo_sort_nodes:
+            if isinstance(n, TaskPhase):
+                total_tasks_durations += n.duration
+                if n.phase_id == 0:
+                    total_num_tasks_verify += 1
+            else:
+                #TODO: this means this is an object_id. We need to have a map of (object_id, size) to calculate the object size average, or total object sizes
+            #find critical path:
+                pass
+            for u in load_dg.adj_in(n):
+                if isinstance(n, TaskPhase):
+                    #print "instance n is {}, instance u is {}".format(n, u)
+                    if critical_path.get(n,0) < critical_path[u] + n.duration:
+                        critical_path[n] = critical_path[u] + n.duration
+                else:
+                    if critical_path.get(n,0) < critical_path[u]:
+                        critical_path[n] = critical_path[u]
+        
+        if total_num_tasks_verify != total_num_tasks:
+            print "Error: Number of tasks in DAG does not match number of tasks in the trace"
+            return             
+        
+        critical_path_time = 0
+        for c in critical_path.keys():
+            if critical_path[c] > critical_path_time:
+                critical_path_time = critical_path[c]
+
+        normalized_critical_path = critical_path_time / total_tasks_durations
+        if total_num_objects > 0:
+            average_object_size = total_objects_size / total_num_objects
+        else:
+            average_object_size = 0
+        print "Total number of tasks is {}, total number of objects is {}, and total object sizes is {}".format(total_num_tasks, total_num_objects, total_objects_size)
+        print "Critical path time is {} and total tasks duration is {}, so normalized critical path is {}".format(critical_path_time, total_tasks_durations, normalized_critical_path)
+        self.total_num_tasks = total_num_tasks
+        self.normalized_critical_path = normalized_critical_path
+        self.total_tasks_durations = total_tasks_durations
+        self.total_objects_size = total_objects_size
+        self.total_num_objects = total_num_objects
+        self.average_object_size = average_object_size
+
 
     def get_root_task(self):
         if self._root_task is None:
@@ -595,7 +680,7 @@ class DirectedGraph():
         self._id_map = {}
         self._edges = []
 
-    def _get_id(self, x):
+    def get_id(self, x):
         if x in self._id_map:
             #print 'found id for {}'.format(x)
             new_id = self._id_map[x]
@@ -608,16 +693,18 @@ class DirectedGraph():
         return new_id
 
     def add_edge(self, a, b):
-        id_a = self._get_id(a)
-        id_b = self._get_id(b)
+        #id_a = self._get_id(a)
+        #id_b = self._get_id(b)
         #print 'EDGE: {} => {}'.format(a, b)
         #print 'EDGE: {} -> {}'.format(id_a, id_b)
-        self._edges.append((id_a, id_b))
+        #self._edges.append((id_a, id_b))
+        self._edges.append((a, b))
 
     def verify_dag_root(self, root):
         # TODO(swang): What is the correct check here?
         return
-        root_id = self._get_id(root)
+        #root_id = self.get_id(root)
+        root_id = root
         # check that
         #  1/ we have a DAG
         #  2/ all nodes reachable from the root
@@ -644,6 +731,46 @@ class DirectedGraph():
         visit(root_id)
         if False in visited:
             raise ValidationError('Reachability from root')
+
+
+    def topo_sort(self, root):
+        #print "root task is {}".format(root)
+        #print "edges is {}".format(self._edges)
+        topo_sorted_list = []
+        q = deque()
+        in_count = {}
+        for e in self._edges:
+            in_count[e[1]] = in_count.get(e[1], 0) + 1
+        #assuming we have only 1 root task! if we have several root tasks (a forest of jobs) this will have to change to "for a in nodes: if in_count[a] == 0: q.push(a)
+        q.append(root)
+        #print "current q in topo_sort is {}".format(q)
+        while q:
+           cur = q[0]
+           topo_sorted_list.append(cur)
+           q.popleft()
+           #sprint "cur is {}".format(cur)
+           for nxt in self.adj_out(cur):
+               in_count[nxt] -= 1
+               if in_count[nxt] == 0:
+                   q.append(nxt)
+        return topo_sorted_list
+
+
+    def adj_out(self, x):
+        result = []
+        for e in self._edges:
+            if e[0] == x:
+                result.append(e[1])
+        return result 
+
+
+    def adj_in(self, x):
+        result = []
+        for e in self._edges:
+            if e[1] == x:
+                result.append(e[0])
+        return result 
+ 
 
 
 class ValidationError(Exception):

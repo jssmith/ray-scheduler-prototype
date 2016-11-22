@@ -1,0 +1,74 @@
+{
+  "rootTask": 1,
+  "tasks": [
+    {
+      "taskId": 1,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [4],
+          "submits": [
+            {
+              "taskId": 2,
+              "timeOffset": 0.0
+            },
+            {
+              "taskId": 3,
+              "timeOffset": 0.0
+            }
+          ],
+          "duration": 0.0,
+          "creates": []
+        }
+      ],
+      "results": [
+        {
+          "objectId": 1,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 2,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "submits": [],
+          "duration": 1.0,
+          "creates": []
+        }
+      ],
+      "results": [
+        {
+          "objectId": 2,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 3,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "submits": [],
+          "duration": 2.0,
+          "creates": [
+            {
+              "timeOffset": 0.5,
+              "objectId": 4,
+              "size": 100
+            }
+          ]
+        }
+      ],
+      "results": [
+        {
+          "objectId": 3,
+          "size": 100
+        }
+      ]
+    }
+  ]
+}

@@ -23,20 +23,31 @@ def usage():
           "object_transfer_time_cost db_message_delay scheduler input.json")
 
 
-def simulate(computation, scheduler_type, system_time, logger, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay):
+def simulate(computation, scheduler_cls, system_time, logger, num_nodes,
+             num_workers_per_node, object_transfer_time_cost, db_message_delay,
+             global_scheduler_kwargs=None, local_scheduler_kwargs=None):
+    if global_scheduler_kwargs is None:
+        global_scheduler_kwargs = {}
+    if local_scheduler_kwargs is None:
+        local_scheduler_kwargs = {}
     object_store = replaystate.ObjectStoreRuntime(system_time,
                                                   object_transfer_time_cost,
                                                   db_message_delay)
     scheduler_db = replaystate.ReplaySchedulerDatabase(system_time, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
-    schedulers = scheduler_type(system_time, scheduler_db)
-    global_scheduler = schedulers.get_global_scheduler(replaystate.EventLoop(system_time))
+    local_nodes = {}
     local_runtimes = {}
-    local_schedulers = {}
     for node_id in range(0, num_nodes):
-        local_runtime = replaystate.NodeRuntime(system_time, object_store, logger, computation, node_id, num_workers_per_node)
-        local_runtimes[node_id] = local_runtime
+        local_runtime = replaystate.NodeRuntime(system_time, object_store,
+                                                logger, computation, node_id,
+                                                num_workers_per_node)
         local_event_loop = replaystate.EventLoop(system_time)
-        local_schedulers[node_id] = schedulers.get_local_scheduler(local_runtime, local_event_loop)
+        local_nodes[node_id] = (local_runtime, local_event_loop)
+        local_runtimes[node_id] = local_runtime
+    schedulers = scheduler_cls(system_time, scheduler_db,
+                               replaystate.EventLoop(system_time),
+                               global_scheduler_kwargs, local_scheduler_kwargs,
+                               local_nodes=local_nodes)
+    global_scheduler = schedulers.get_global_scheduler()
     scheduler_db.schedule_root(0)
     system_time.advance_fully()
     num_workers_executing = 0
@@ -61,7 +72,8 @@ def setup_logging():
     logging.getLogger().setLevel(logging.DEBUG)
 
 def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
-               db_message_delay, scheduler_name, trace_filename):
+               db_message_delay, scheduler_name, trace_filename,
+               global_scheduler_kwargs, local_scheduler_kwargs):
     scheduler_cls = schedulers.get(scheduler_name)
     if scheduler_cls is None:
         print 'Error - unrecognized scheduler'
@@ -74,7 +86,8 @@ def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
     system_time = replaystate.SystemTime()
     logger = replaystate.PrintingLogger(system_time)
     simulate(computation, scheduler_cls, system_time, logger, num_nodes,
-             num_workers_per_node, object_transfer_time_cost, db_message_delay)
+             num_workers_per_node, object_transfer_time_cost, db_message_delay,
+             global_scheduler_kwargs, local_scheduler_kwargs)
 
 def run_replay_from_sys_argv(args):
     num_nodes = int(args[1])
@@ -84,7 +97,7 @@ def run_replay_from_sys_argv(args):
     scheduler_name = args[5]
     trace_filename = args[6]
     run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
-               db_message_delay, scheduler_name, trace_filename)
+               db_message_delay, scheduler_name, trace_filename, {}, {})
 
 def run_replay_from_config(config_filename):
     import default_config
@@ -99,10 +112,15 @@ def run_replay_from_config(config_filename):
                                default_config.DB_MESSAGE_DELAY)
     scheduler_name = getattr(config, 'SCHEDULER_NAME',
                              default_config.SCHEDULER_NAME)
+    global_scheduler_kwargs = getattr(config, 'GLOBAL_SCHEDULER_KWARGS',
+                                      default_config.GLOBAL_SCHEDULER_KWARGS)
+    local_scheduler_kwargs = getattr(config, 'LOCAL_SCHEDULER_KWARGS',
+                                     default_config.LOCAL_SCHEDULER_KWARGS)
     trace_filename = getattr(config, 'TRACE_FILENAME',
                              default_config.TRACE_FILENAME)
     run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
-               db_message_delay, scheduler_name, trace_filename)
+               db_message_delay, scheduler_name, trace_filename,
+               global_scheduler_kwargs, local_scheduler_kwargs)
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:

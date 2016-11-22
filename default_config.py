@@ -10,6 +10,9 @@ DB_MESSAGE_DELAY = 0
 
 # Scheduler name. Must match a key in replaytrace.py.
 SCHEDULER_NAME = "trivial"
+# Keyword arguments for instantiating the schedulers.
+GLOBAL_SCHEDULER_KWARGS = {}
+LOCAL_SCHEDULER_KWARGS = {}
 
 # The pathname for the trace file to replay.
 TRACE_FILENAME = "traces/test/rnn_6layers_w3s2n1_attempt2.json"

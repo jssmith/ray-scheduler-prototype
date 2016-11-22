@@ -1,0 +1,112 @@
+{
+  "rootTask": 1,
+  "tasks": [
+    {
+      "taskId": 1,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "submits": [
+            {
+              "taskId": 2,
+              "timeOffset": 0.1
+            },
+            {
+              "taskId": 3,
+              "timeOffset": 0.2
+            },
+            {
+              "taskId": 4,
+              "timeOffset": 0.2
+            },
+            {
+              "taskId": 5,
+              "timeOffset": 0.2
+            }
+          ],
+          "duration": 1,
+          "creates": []
+        }
+      ],
+      "results": [
+        {
+          "objectId": 1,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 2,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [],
+          "submits": [],
+          "duration": 2,
+          "creates": []
+        }
+      ],
+      "results": [
+        {
+          "objectId": 2,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 3,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [2],
+          "submits": [],
+          "duration": 2,
+          "creates": []
+        }
+      ],
+      "results": [
+        {
+          "objectId": 3,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 4,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [2],
+          "submits": [],
+          "duration": 2,
+          "creates": []
+        }
+      ],
+      "results": [
+        {
+          "objectId": 4,
+          "size": 100
+        }
+      ]
+    },
+    {
+      "taskId": 5,
+      "phases": [
+        {
+          "phaseId": 0,
+          "dependsOn": [2],
+          "submits": [],
+          "duration": 2,
+          "creates": []
+        }
+      ],
+      "results": [
+        {
+          "objectId": 5,
+          "size": 100
+        }
+      ]
+    }
+  ]
+}

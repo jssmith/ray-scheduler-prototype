@@ -78,7 +78,7 @@ do
           done
        done
        suffix=$t_$s
-       mv trace.json trace_rnn_t${t}_s${s}.json
+       mv trace.json $dot/traces/sweep/trace_rnn_t${t}_s${s}.json
     done
 done
 
@@ -122,14 +122,14 @@ do
           done
        done
        suffix=$t_$s
-       mv trace.json trace_rl-pong_t${t}_s${s}.json
+       mv trace.json $dot/traces/sweep/trace_rl-pong_t${t}_s${s}.json
     done
 done
 
 
 
 
-##############################Alexnet########################################
+#############################Alexnet########################################
 #external real Ray sweep
 for t in `seq $min_task_factor_range $max_task_factor_range` #number of tasks factor (in the case of rnn this is num_steps_
 do
@@ -168,7 +168,7 @@ do
           done
        done
        suffix=$t_$s
-       mv trace.json trace_alexnet_t${t}_s${s}.json
+       mv trace.json $dot/traces/sweep/trace_alexnet_t${t}_s${s}.json
     done
 done
 

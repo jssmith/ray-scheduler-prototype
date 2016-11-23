@@ -1,0 +1,78 @@
+[
+  {
+    "scheduler": "delay",
+    "numNodes": 2,
+    "workersPerNode": 2,
+    "transferTimeCost": 100,
+    "dbMessageDelay": 0,
+    "globalSchedulerKWArgs": {
+      "delay": 2
+    },
+    "localSchedulerKWArgs": {},
+    "taskTiming": [
+      {
+        "taskId": 1,
+        "startTimestamp": 0.0,
+        "endTimestamp": 1.0
+      },
+      {
+        "taskId": 2,
+        "startTimestamp": 0.1,
+        "endTimestamp": 2.1
+      },
+      {
+        "taskId": 3,
+        "startTimestamp": 2.1,
+        "endTimestamp": 4.1
+      },
+      {
+        "taskId": 4,
+        "startTimestamp": 2.1,
+        "endTimestamp": 4.1
+      },
+      {
+        "taskId": 5,
+        "startTimestamp": 4.1,
+        "endTimestamp": 10006.1
+      }
+    ]
+  },
+  {
+    "scheduler": "delay",
+    "numNodes": 2,
+    "workersPerNode": 2,
+    "transferTimeCost": 100,
+    "dbMessageDelay": 0,
+    "globalSchedulerKWArgs": {
+      "delay": 4
+    },
+    "localSchedulerKWArgs": {},
+    "taskTiming": [
+      {
+        "taskId": 1,
+        "startTimestamp": 0.0,
+        "endTimestamp": 1.0
+      },
+      {
+        "taskId": 2,
+        "startTimestamp": 0.1,
+        "endTimestamp": 2.1
+      },
+      {
+        "taskId": 3,
+        "startTimestamp": 2.1,
+        "endTimestamp": 4.1
+      },
+      {
+        "taskId": 4,
+        "startTimestamp": 2.1,
+        "endTimestamp": 4.1
+      },
+      {
+        "taskId": 5,
+        "startTimestamp": 4.1,
+        "endTimestamp": 6.1
+      }
+    ]
+  }
+]

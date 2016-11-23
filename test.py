@@ -173,11 +173,7 @@ class TestValidTrace(unittest.TestCase):
         keys = frozenset(dict.keys())
         if keys == frozenset([u'taskId', 'startTimestamp', 'endTimestamp']):
             return TestValidTrace.TaskTiming(dict[u'taskId'], dict[u'startTimestamp'], dict[u'endTimestamp'])
-        if keys == frozenset([u'scheduler', u'numNodes', u'workersPerNode', u'transferTimeCost', u'dbMessageDelay', u'taskTiming']):
-            return dict
-        else:
-            print "unexpected map in validation: {}".format(keys)
-            sys.exit(1)
+        return dict
 
     def runTest(self):
         import json
@@ -196,10 +192,12 @@ class TestValidTrace(unittest.TestCase):
             num_workers_per_node = int(validation['workersPerNode'])
             transfer_time_cost = float(validation['transferTimeCost'])
             db_message_delay = float(validation['dbMessageDelay'])
+            global_scheduler_kwargs = validation['globalSchedulerKWArgs']
+            local_scheduler_kwargs = validation['localSchedulerKWArgs']
             event_simulation = replaystate.EventSimulation()
             logger = TestValidTrace.ValidatingLogger(self, event_simulation, validation['taskTiming'])
             scheduler_type = schedulers[scheduler_str]
-            simulate(computation, scheduler_type, event_simulation, logger, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+            simulate(computation, scheduler_type, event_simulation, logger, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay, global_scheduler_kwargs, local_scheduler_kwargs)
             logger.verify_all_finished()
 
 
@@ -211,6 +209,7 @@ def valid_trace_suite():
         'two_parallel_tasks',
         'two_phase',
         'two_results',
+        'delay_validation',
         'no_result']
     return unittest.TestSuite(map(TestValidTrace, test_names))
 

@@ -5,6 +5,8 @@
     "workersPerNode": 3,
     "transferTimeCost": 0,
     "dbMessageDelay": 0,
+    "globalSchedulerKWArgs": {},
+    "localSchedulerKWArgs": {},
     "taskTiming": [
       {
         "taskId": 1,
@@ -24,6 +26,8 @@
     "workersPerNode": 3,
     "transferTimeCost": 0,
     "dbMessageDelay": 0.001,
+    "globalSchedulerKWArgs": {},
+    "localSchedulerKWArgs": {},
     "taskTiming": [
       {
         "taskId": 1,
@@ -43,6 +47,8 @@
     "workersPerNode": 3,
     "transferTimeCost": 0,
     "dbMessageDelay": 0.001,
+    "globalSchedulerKWArgs": {},
+    "localSchedulerKWArgs": {},
     "taskTiming": [
       {
         "taskId": 1,

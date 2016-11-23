@@ -619,7 +619,7 @@ class SimpleLocalScheduler(PassthroughLocalScheduler):
         if self._node_runtime.free_workers() == 0:
             return False
         for d_object_id in task.get_phase(0).depends_on:
-            if not self._node_runtime.is_local(d_object_id):
+            if self._node_runtime.is_local(d_object_id) != ObjectStatus.READY:
                 return False
         self._node_runtime.send_to_dispatcher(task, 1)
         return True
@@ -654,7 +654,7 @@ class ThresholdLocalScheduler(PassthroughLocalScheduler):
         print "threshold: local load is {}".format(local_load)
 
         for d_object_id in task.get_phase(0).depends_on:
-            if not self._node_runtime.is_local(d_object_id):
+            if self._node_runtime.is_local(d_object_id) != ObjectStatus.READY:
                 ###objects_transfer_size = transfer_size + self._node_runtime.get_object_size(d_object_id)
                 #TODO: add to node_runtime the function get_object_size() which just return a value from the _object_store sizes map/dict.
 #                object_status = self._node_runtime.get_object_status(d_object_id)

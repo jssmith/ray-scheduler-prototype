@@ -124,6 +124,13 @@ class RemoveNodeUpdate():
     def __ne__(self, other):
         return not self.__eq__(other)
 
+
+class ObjectStatus():
+    UNKNOWN = 0
+    EXPECTED = 1
+    READY = 2
+
+
 class AbstractNodeRuntime():
     __metaclass__ = abc.ABCMeta
 

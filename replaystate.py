@@ -110,17 +110,19 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
 class ObjectStoreRuntime():
     def __init__(self, event_simulation, data_transfer_time_cost, db_message_delay):
         self._event_simulation = event_simulation
-        self._objects_locations = defaultdict(set)
+        self._object_locations = defaultdict(lambda: {})
         self._object_sizes = {}
         self._update_handlers = defaultdict(list)
         self._data_transfer_time_cost = data_transfer_time_cost
         self._db_message_delay = db_message_delay
         self._awaiting_completion = defaultdict(list)
-        self._unready_objects_locations = defaultdict(set)
+
+    def expect_object(self, object_id, node_id):
+        if node_id not in self._object_locations[object_id] or self._object_locations[object_id][node_id] != ObjectStatus.READY:
+            self._object_locations[object_id][node_id] = ObjectStatus.EXPECTED
 
     def add_object(self, object_id, node_id, object_size):
-        #del self._unready_objects_locations[object_id]
-        self._objects_locations[object_id].add(node_id)
+        self._object_locations[object_id][node_id] = ObjectStatus.READY
         self._object_sizes[object_id] = object_size
         self._yield_object_ready_update(object_id, node_id, object_size)
         if object_id in self._awaiting_completion.keys():
@@ -131,21 +133,14 @@ class ObjectStoreRuntime():
                     self._copy_object(object_id, d_node_id, node_id, on_done) 
             del self._awaiting_completion[object_id]
 
-    def schedule_object(self, object_id, node_id, object_size):
-        self._unready_objects_locations[object_id].add(node_id)
-        self._object_sizes[object_id] = object_size
-
-    def get_unready_locations(self, object_id):
-        return self._unready_objects_locations[object_id]
-
-    def get_locations(self, object_id):
-        return self._objects_locations[object_id]
-
     def get_updates(self, node_id, update_handler):
         self._update_handlers[str(node_id)].append(update_handler)
 
     def is_local(self, object_id, node_id):
-        return node_id in self._objects_locations[object_id]
+        if node_id in self._object_locations[object_id]:
+            return self._object_locations[object_id][node_id]
+        else:
+            return ObjectStatus.UNKNOWN
 
     def get_object_size(self, node_id, object_id, result_handler):
         handler = lambda: result_handler(self._object_sizes(object_id))
@@ -155,6 +150,18 @@ class ObjectStoreRuntime():
         else:
             self._event_simulation.schedule_delayed(self._db_message_delay, handler)
 
+    def get_object_size_locations(self, object_id, result_handler):
+        if object_id in self._object_sizes.keys():
+            size = self._object_sizes[object_id]
+        else:
+            size = None
+        if object_id in self._object_locations.keys():
+            location_status = self._object_locations[object_id]
+        else:
+            location_status = None
+        handler = lambda: result_handler(object_id, size, location_status)
+        self._event_simulation.schedule_delayed(self._db_message_delay, handler)
+
     def _yield_object_ready_update(self, object_id, node_id, object_size):
         self._yield_update(node_id, ObjectReadyUpdate(ObjectDescription(object_id, node_id, object_size), node_id))
 
@@ -163,23 +170,26 @@ class ObjectStoreRuntime():
             update_handler(update)
 
     def require_object(self, object_id, node_id, on_done):
-        object_locations = self._objects_locations[object_id]
-        if node_id in object_locations:
+        object_ready_locations = dict(filter(lambda (node_id, status): status == ObjectStatus.READY, self._object_locations[object_id].items()))
+        if node_id in object_ready_locations.keys():
             # TODO - we aren't firing the ObjectReadyUpdate in this scenario. Should we be doing so?
 #            print "require has locally"
             on_done()
         else:
+            # TODO - I don't think we are properly handling the case where the object completes on a remote
+            # node and then we have to copy it over locally.
 #            print "require doesn't have locally"
-            if not object_locations:
+            if not object_ready_locations:
                 self._awaiting_completion[object_id].append((node_id, on_done))
             else:
                 # TODO better way to choose an element from a set than list(set)[0]
-                self._copy_object(object_id, node_id, list(object_locations)[0], on_done)
+                source_location = list(object_ready_locations.keys())[0]
+                self._copy_object(object_id, node_id, source_location, on_done)
 
     def _copy_object(self, object_id, dst_node_id, src_node_id, on_done):
         if dst_node_id == src_node_id:
             on_done()
-        elif src_node_id in self._objects_locations[object_id]:
+        elif src_node_id in self._object_locations[object_id].keys() and self._object_locations[object_id][src_node_id] == ObjectStatus.READY:
             print "moving object to {} from {}".format(dst_node_id, src_node_id)
             data_transfer_time = self._object_sizes[object_id] * self._data_transfer_time_cost
             self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_moved(object_id, dst_node_id, on_done))
@@ -187,7 +197,7 @@ class ObjectStoreRuntime():
             raise RuntimeError('Unexpected failure to copy object {} to {} from {}'.format(object_id, dst_node_id, src_node_id))
 
     def _object_moved(self, object_id, dst_node_id, on_done):
-        self._objects_locations[object_id].add(dst_node_id)
+        self._object_locations[object_id][dst_node_id] = ObjectStatus.READY
         self._yield_object_ready_update(object_id, dst_node_id, self._object_sizes[object_id])
         on_done()
 

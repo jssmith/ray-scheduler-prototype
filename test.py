@@ -7,6 +7,8 @@ from collections import namedtuple
 import replaystate
 from replaystate import *
 
+import schedulerbase
+
 from replaytrace import schedulers
 from replaytrace import simulate
 
@@ -494,6 +496,7 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self.event_simulation = EventSimulation()
         self.os = ObjectStoreRuntime(self.event_simulation, .001, 0)
         self.last_ready = defaultdict(list)
+        self.size_locations = {}
 
     def _fn_ready(self, object_id, node_id):
         self.last_ready[(object_id, node_id)].append(self.event_simulation.get_time())
@@ -504,22 +507,32 @@ class TestObjectStoreRuntime(unittest.TestCase):
     def _last_ready(self, object_id, node_id):
         return self.last_ready[(object_id, node_id)]
 
+    def _retrieve_sizes_locations(self, object_id):
+        self.os.get_object_size_locations(object_id, lambda object_id, object_size, object_locations: self._location_handler(object_id, object_size, object_locations))
+        self.event_simulation.advance()
+
+    def _location_handler(self, object_id, object_size, object_locations):
+        self.size_locations[object_id] = (object_size, object_locations)
+
     def _add_object(self, object_id, node_id, size):
         self.os.add_object(object_id, node_id, size)
 
     def test_no_objects(self):
-        self.assertItemsEqual([], self.os.get_locations('1'))
+        self._retrieve_sizes_locations('1')
+        self.assertEqual((None, None), self.size_locations['1'])
 
     def test_one_object(self):
         self._add_object('1', 0, 100)
-        self.assertItemsEqual([0], self.os.get_locations('1'))
+        self._retrieve_sizes_locations('1')
+        self.assertEqual((100, {0: schedulerbase.ObjectStatus.READY}), self.size_locations['1'])
 
     def test_moved_object(self):
         self.assertEquals(0, self.event_simulation.get_time())
         self._add_object('1', 0, 200)
-        self.assertItemsEqual([0], self.os.get_locations('1'))
+        self._retrieve_sizes_locations('1')
+        self.assertEqual((200, {0: schedulerbase.ObjectStatus.READY}), self.size_locations['1'])
 
-        self.assertFalse(self.os.is_local('1', 1))
+        self.assertEqual(schedulerbase.ObjectStatus.UNKNOWN, self.os.is_local('1', 1))
 
         self._require_object('1', 0)
         self.event_simulation.advance()

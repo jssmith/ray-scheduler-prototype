@@ -244,6 +244,8 @@ class NodeRuntime():
     def is_local(self, object_id):
         return self._object_store.is_local(object_id, self.node_id)
 
+    def get_object_size_locations(self, object_id, result_handler):
+        return self._object_store.get_object_size_locations(object_id, result_handler)
 
     def get_object_size(self, object_id, handler):
         return self._object_store.get_object_size(self.node_id, object_id,

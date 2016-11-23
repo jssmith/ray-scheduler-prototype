@@ -610,6 +610,44 @@ class PassthroughLocalScheduler():
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
+
+class FlexiblePassthroughLocalScheduler():
+    def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
+        self._system_time = system_time
+        self._node_runtime = node_runtime
+        self._node_id = node_runtime.node_id
+        self._scheduler_db = scheduler_db
+        self._event_loop = event_loop
+
+        self._node_runtime.get_updates(lambda update: self._handle_runtime_update(update))
+        self._scheduler_db.get_local_scheduler_updates(self._node_id, lambda update: self._handle_scheduler_db_update(update))
+
+    def _handle_runtime_update(self, update):
+        print '{:.6f}: LocalScheduler update {}'.format(self._system_time.get_time(), str(update))
+        if isinstance(update, ObjectReadyUpdate):
+            self._scheduler_db.object_ready(update.object_description, update.submitting_node_id)
+        elif isinstance(update, FinishTaskUpdate):
+            self._scheduler_db.finished(update.task_id)
+        elif isinstance(update, SubmitTaskUpdate):
+#            print "Forwarding task " + str(update.task)
+            self._filter_forward(update.task)        
+        else:
+            raise NotImplementedError('Unknown update: {}'.format(type(update)))
+
+
+    def _forward_to_global(self, task, scheduled_locally):
+        self._scheduler_db.submit(task, self._node_runtime.node_id, scheduled_locally)
+    
+    def _filter_forward(self, task):
+        self._forward_to_global(task, False)
+
+    def _handle_scheduler_db_update(self, update):
+        if isinstance(update, ScheduleTaskUpdate):
+#            print "Dispatching task " + str(update.task)
+            self._node_runtime.send_to_dispatcher(update.task, 0)
+        else:
+            raise NotImplementedError('Unknown update: {}'.format(type(update)))
+
 class SimpleLocalScheduler(PassthroughLocalScheduler):
     def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
         PassthroughLocalScheduler.__init__(self, system_time, node_runtime,
@@ -626,12 +664,28 @@ class SimpleLocalScheduler(PassthroughLocalScheduler):
 
 
 
-class ThresholdLocalScheduler(PassthroughLocalScheduler):
+class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
     def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
-        PassthroughLocalScheduler.__init__(self, system_time, node_runtime,
+        FlexiblePassthroughLocalScheduler.__init__(self, system_time, node_runtime,
                                            scheduler_db, event_loop)
+        self._size_location_results = defaultdict(list)
+        self._size_location_awaiting_results = defaultdict(set)
 
-    def _schedule_locally(self, task):
+    def _size_location_result_handler(self, task, object_id, object_size, object_locations):
+        task_id = task.id()
+        self._size_location_results[task_id].append((object_id, object_size, object_locations))
+        del self._size_location_awaiting_results[task_id][object_id]
+        if not self._size_location_awaiting_results[task_id]:
+            # have received all handler callbacks for this task
+            del self._size_location_awaiting_results[task_id]
+
+            # go on processing with complete results
+            # either schedule locally or send to global scheduler
+
+            del self._size_location_results[task_id]
+
+
+    def _filter_forward(self, task):
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
         threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 20)
@@ -669,27 +723,34 @@ class ThresholdLocalScheduler(PassthroughLocalScheduler):
         if len(task.get_phase(0).depends_on) == objects_status['local_ready'] and self._node_runtime.free_workers() > 0:
             print "threshold: all objects ready"
             self._node_runtime.send_to_dispatcher(task, 1)
-            return True
+            self._forward_to_global(task, scheduled_locally = True)
         elif len(task.get_phase(0).depends_on) == objects_status['local_ready'] and local_load < threshold1l:
             print "threshold: all objects ready"
             self._node_runtime.send_to_dispatcher(task, 1)
-            return True
+            self._forward_to_global(task, scheduled_locally = True)
 
 
         if local_load > threshold1h:
-            return False
+            self._forward_to_global(task, scheduled_locally = False)
         elif local_load < threshold1h and local_load > threshold1l:
             #querry for remote object sizes and calculate task load
             for remote_object_id in remote_objects:
+                self._size_location_awaiting_results[task_id.id()].add(remote_object_id)
+            for remote_object_id in remote_objects:
+                self._node_runtime.get_object_size_locations(remote_object_id,
+                    lambda object_id, size, object_locations:
+                    self._size_location_result_handler(task, object_id, size, object_locations))
+
+## MOVE THIS CODE
                 #objects_transfer_size += self._node_runtime.get_object_size(remote_object_id) 
-                pass  
             task_load = objects_transfer_size 
             print "task load is {}".format(task_load)
             if task_load > threshold2 :
-                return False
+                self._forward_to_global(task, scheduled_locally = False)
+## END MOVE THIS CODE
 
         self._node_runtime.send_to_dispatcher(task, 1)
-        return True
+        self._forward_to_global(task, scheduled_locally = True)
 
 
 class BaseScheduler():

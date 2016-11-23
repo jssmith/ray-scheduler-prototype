@@ -71,7 +71,7 @@ class GlobalSchedulerState():
         elif isinstance(update, ObjectReadyUpdate):
             self._object_ready(update.object_description.object_id,
                                update.submitting_node_id,
-                               update.size)
+                               update.object_description.size)
         else:
             raise NotImplementedError('Unknown update {}'.format(update.__class__.__name__))
 
@@ -832,7 +832,7 @@ class TrivialThresholdLocalScheduler(TrivialScheduler):
                                   local_nodes=local_nodes)
 
 
-class TransferCostAwareLocalScheduler(BaseScheduler):
+class TransferCostAwareLocalScheduler(TransferCostAwareScheduler):
 
     def __init__(self, system_time, scheduler_db, event_loop,
                  global_scheduler_kwargs=None, local_scheduler_kwargs=None,

@@ -603,6 +603,9 @@ class ComputationDescription():
     def get_task(self, task_id):
         return self._tasks[task_id]
 
+    def get_task_ids(self):
+        return self._tasks.keys()
+
 
 class Task():
     def __init__(self, task_id, phases, results):

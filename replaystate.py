@@ -231,7 +231,7 @@ class NodeRuntime():
         self.num_workers_executing = 0
 
         self._time_buffer_size = 10
-        self._task_start_times = deque([], self._time_buffer_size)   
+        self._task_start_times = deque([0], self._time_buffer_size)   
         self._task_times = deque([], self._time_buffer_size)
         self._task_start_times_map = {}
 
@@ -252,11 +252,11 @@ class NodeRuntime():
                                                   handler)
 
     def get_dispatch_queue_size(self):
-        print "threshold: dispatcher queue is: {}".format(self._queue)
+        #print "threshold scheduler debug: dispatcher queue is: {}".format(self._queue)
         return len(self._queue)
 
     def get_node_eff_rate(self):
-        print "threshold: task_start_times buffer is {}".format(self._task_start_times)
+        #print "threshold scheduler debug: task_start_times buffer is {}".format(self._task_start_times)
         if (self._task_start_times[-1] - self._task_start_times[0]) == 0 :
             return 0
         return len(self._task_start_times) / (self._task_start_times[-1] - self._task_start_times[0])
@@ -316,7 +316,7 @@ class NodeRuntime():
         self._internal_scheduler_schedule(task_id, 0)
 
     def _process_tasks(self):
-        print "alon threshold: dispatcher queue is {}".format(self._queue)
+        #print "threshold scheduler debug: dispatcher queue in node {} is {}".format(self.node_id, self._queue)
         while self.num_workers_executing < self.num_workers and self._queue:
             (_, _, task_id) = heapq.heappop(self._queue)
             self._start_task(task_id)

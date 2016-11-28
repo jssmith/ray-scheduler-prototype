@@ -672,9 +672,13 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._size_location_awaiting_results = defaultdict(set)
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
-        self.threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 20)
-        self.threshold1h = os.getenv('RAY_SCHED_THRESHOLD1H', 50)
+        self.threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 0.05)
+        self.threshold1h = os.getenv('RAY_SCHED_THRESHOLD1H', 0.5)
         self.threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 200)
+        #print "threshold scheduler: threshold1l is {}".format(self.threshold1l)
+        #print "threshold scheduler: threshold1h is {}".format(self.threshold1h)
+        #print "threshold scheduler: threshold2 is {}".format(self.threshold2)
+        self.avg_data_transfer_cost = os.getenv('AVG_DTC', 0.0000001)
 
     def _size_location_result_handler(self, task, object_id, object_size, object_locations):
         task_id = task.id()
@@ -698,7 +702,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
             # go on processing with complete results
             # either schedule locally or send to global scheduler
             for obj_id,remote_object_size,locations_status in self._size_location_results[task_id]:
-                print "threshold: remote object {} status is {} and size is {}".format(obj_id, locations_status, remote_object_size)
+                print "{:.6f}: threshold scheduler: remote object {} status is {} and size is {}".format(self._system_time.get_time(), obj_id, locations_status, remote_object_size)
                 for node in locations_status.keys():
                     if locations_status[node] == ObjectStatus.READY and remote_object_size:
                         ready_remote_transfer_size += remote_object_size
@@ -709,13 +713,14 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
                 pass #was handles in the "short circuit" case at the beginning of the function  
 
             if ready_remote_transfer_size != 0:
-                task_load = ready_remote_transfer_size
-            print "task load is {}".format(task_load)
-            if task_load > self.threshold2 :
-                print "threshold: local load is medium, and task load is small. task load is {} and threshold is {}, so sending task {} to global scheduler".format(task_load, self.threshold2, task.id())
+                #task_load = ready_remote_transfer_size
+                task_load = ready_remote_transfer_size * self.avg_data_transfer_cost / self._node_runtime.get_avg_task_time()
+            print "{:.6f}: threshold scheduler: task load is {}".format(self._system_time.get_time(), task_load)
+            if float(task_load) > float(self.threshold2) :
+                print "{:.6f}: threshold scheduler: local load is medium, and task load is high. task load is {} and threshold is {}, so sending task {} to global scheduler".format(self._system_time.get_time(), task_load, self.threshold2, task.id())
                 self._forward_to_global(task, scheduled_locally = False)
             else:
-                print "threshold: local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally".format(task_load, self.threshold2, task.id())
+                print "{:.6f}: threshold scheduler: local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally".format(self._system_time.get_time(), task_load, self.threshold2, task.id())
                 self._node_runtime.send_to_dispatcher(task, 1)
                 self._forward_to_global(task, scheduled_locally = True)
             del self._size_location_results[task_id]
@@ -730,25 +735,25 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
 
         #avg_task_time = 1
         avg_task_time = self._node_runtime.get_avg_task_time()
-        print "get_avg_task_time : {}".format(self._node_runtime.get_avg_task_time())
+        print "{:.6f}: threshold scheduler: get_avg_task_time : {}".format(self._system_time.get_time(), self._node_runtime.get_avg_task_time())
         #self._node_runtime.get_avg_task_time() buffers that last local 20 task completion times
         dispatcher_load = self._node_runtime.get_dispatch_queue_size()
         node_efficiency_rate = self._node_runtime.get_node_eff_rate()
         #add to node_runtime the function get_node_eff_rate(). It will record a buffer in the form of list of task_start_time for the last 10 or 20 tasks (this will be a constant parameter) sent for execution on the node. The node efficiency rate will be the buffer size (whatever the constant is) divided by the (last_element-first_element) of the buffer.
         
-        print "threshold: node_efficiency_rate is {}".format(node_efficiency_rate)
-        print "threshold: avg_task_time is {}".format(avg_task_time)
-        print "threshold: dispatcher_load is {}".format(dispatcher_load)
-        local_load = 0 if (node_efficiency_rate == 0) else ((dispatcher_load / node_efficiency_rate) / avg_task_time)
-        print "threshold: local load is {}".format(local_load)
+        print "{:.6f}: threshold scheduler: node_efficiency_rate is {}".format(self._system_time.get_time(), node_efficiency_rate)
+        print "{:.6f}: threshold scheduler: avg_task_time is {}".format(self._system_time.get_time(), avg_task_time)
+        print "{:.6f}: threshold scheduler: dispatcher_load is {}".format(self._system_time.get_time(), dispatcher_load)
+        local_load = 0 if (node_efficiency_rate == 0) else (((dispatcher_load+self._node_runtime.num_workers_executing) / node_efficiency_rate) / avg_task_time)
+        print "{:.6f}: threshold scheduler: local load is {}".format(self._system_time.get_time(), local_load)
 
         for d_object_id in task.get_phase(0).depends_on:
             if self._node_runtime.is_local(d_object_id) == ObjectStatus.READY:
                 objects_status['local_ready'] += 1
-                print "threshold: object {} is ready".format(d_object_id) 
+                print "{:.6f}: threshold scheduler: object {} is ready".format(self._system_time.get_time(), d_object_id) 
             elif self._node_runtime.is_local(d_object_id) == ObjectStatus.EXPECTED:
                 objects_status['local_expected'] += 1
-                print "threshold: object {} is expected".format(d_object_id)
+                print "{:.6f}: threshold scheduler: object {} is expected".format(self._system_time.get_time(), d_object_id)
                 #objects_transfer_size = transfer_size + self._node_runtime.get_object_size(d_object_id)
             else:
                 remote_objects.append(d_object_id) 
@@ -756,33 +761,33 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
 
         #the trivial case
         if len(task.get_phase(0).depends_on) == objects_status['local_ready'] and self._node_runtime.free_workers() > 0:
-            print "threshold: all objects ready locally, so scheduling task {} locally".format(task.id())
+            print "{:.6f}: threshold scheduler: all objects ready locally and there are free workers, so scheduling task {} locally".format(self._system_time.get_time(), task.id())
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)
 
         #if the local scheduler has very low load, even with expected objects this still reduces to the trivial case (depending on the "low load" threshold)
-        elif len(task.get_phase(0).depends_on) == objects_status['local_ready']+objects_status['local_expected'] and local_load < self.threshold1l:
-            print "threshold: all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally".format(local_load, self.threshold1l, task.id())
+        elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and (float(self.threshold1l) > float(local_load))):
+            print "{:.6f}: threshold scheduler: all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally".format(self._system_time.get_time(), local_load, self.threshold1l, task.id())
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)
 
 
         #if the local scheduler has a very high load, it's better to send the task to the global scheduler, even without querrying about all the remote objects
-        elif local_load > self.threshold1h:
-            print "threshold: local load is very high. local load is {} and threshold is {}, so sending task {} to global scheduler immidietly".format(local_load, self.threshold1h, task.id())
+        elif float(local_load) > float(self.threshold1h):
+            print "{:.6f}: threshold scheduler: local load is very high. local load is {} and threshold is {}, so sending task {} to global scheduler immidietly".format(self._system_time.get_time(), local_load, self.threshold1h, task.id())
             self._forward_to_global(task, scheduled_locally = False)
 
         #the interesting case, where we need information about remote objects
         #elif local_load < self.threshold1h and local_load > self.threshold1l:
         else:
             if not remote_objects:
-                 print "threshold: local load {} is medium, but all object will be local, so scheduling task {} locally".format(local_load, task.id())
+                 print "{:.6f}: threshold scheduler: local load {} is medium, but all objects will be local, so scheduling task {} locally".format(self._system_time.get_time(), local_load, task.id())
                  self._forward_to_global(task, scheduled_locally = False)
             #querry for remote object sizes and calculate task load
             for remote_object_id in remote_objects:
                 self._size_location_awaiting_results[task.id()].add(remote_object_id)
             for remote_object_id in remote_objects:
-                print "threshold: querring for remote object size"
+                print "{:.6f}: threshold scheduler: querring for remote object size".format(self._system_time.get_time())
                 self._node_runtime.get_object_size_locations(remote_object_id,
                     lambda object_id, size, object_locations:
                     self._size_location_result_handler(task, object_id, size, object_locations))
@@ -939,4 +944,43 @@ class TransferCostAwareLocalScheduler(TransferCostAwareScheduler):
                                             global_scheduler_kwargs=global_scheduler_kwargs,
                                             local_scheduler_kwargs=local_scheduler_kwargs,
                                             local_scheduler_cls=SimpleLocalScheduler,
+                                            local_nodes=local_nodes)
+
+
+class TransferCostAwareThresholdLocalScheduler(TransferCostAwareScheduler):
+
+    def __init__(self, system_time, scheduler_db, event_loop,
+                 global_scheduler_kwargs=None, local_scheduler_kwargs=None,
+                 local_nodes=None):
+        TransferCostAwareScheduler.__init__(self, system_time, scheduler_db,
+                                            event_loop,
+                                            global_scheduler_kwargs=global_scheduler_kwargs,
+                                            local_scheduler_kwargs=local_scheduler_kwargs,
+                                            local_scheduler_cls=ThresholdLocalScheduler,
+                                            local_nodes=local_nodes)
+
+
+class LocationAwareLocalScheduler(LocationAwareScheduler):
+
+    def __init__(self, system_time, scheduler_db, event_loop,
+                 global_scheduler_kwargs=None, local_scheduler_kwargs=None,
+                 local_nodes=None):
+        LocationAwareScheduler.__init__(self, system_time, scheduler_db,
+                                            event_loop,
+                                            global_scheduler_kwargs=global_scheduler_kwargs,
+                                            local_scheduler_kwargs=local_scheduler_kwargs,
+                                            local_scheduler_cls=SimpleLocalScheduler,
+                                            local_nodes=local_nodes)
+
+
+class LocationAwareThresholdLocalScheduler(LocationAwareScheduler):
+
+    def __init__(self, system_time, scheduler_db, event_loop,
+                 global_scheduler_kwargs=None, local_scheduler_kwargs=None,
+                 local_nodes=None):
+        LocationAwareScheduler.__init__(self, system_time, scheduler_db,
+                                            event_loop,
+                                            global_scheduler_kwargs=global_scheduler_kwargs,
+                                            local_scheduler_kwargs=local_scheduler_kwargs,
+                                            local_scheduler_cls=ThresholdLocalScheduler,
                                             local_nodes=local_nodes)

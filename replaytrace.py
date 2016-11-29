@@ -9,11 +9,14 @@ import imp
 schedulers = {
     'trivial' : TrivialScheduler,
     'location_aware' : LocationAwareScheduler,
-    'trivial_local' : TrivialLocalScheduler,
     'delay' : DelayScheduler,
     'transfer_aware' : TransferCostAwareScheduler,
-    'basic_threshold' : TrivialThresholdLocalScheduler,
-    'transfer_aware_local' : TransferCostAwareLocalScheduler
+    'trivial_local' : TrivialLocalScheduler,
+    'trivial_threshold_local' : TrivialThresholdLocalScheduler,
+    'transfer_aware_local' : TransferCostAwareLocalScheduler,
+    'transfer_aware_threshold_local' : TransferCostAwareLocalScheduler,
+    'location_aware_local' : LocationAwareLocalScheduler,
+    'location_aware_threshold_local' : LocationAwareThresholdLocalScheduler
 }
 
 def usage():

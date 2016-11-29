@@ -110,17 +110,19 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
 class ObjectStoreRuntime():
     def __init__(self, event_simulation, data_transfer_time_cost, db_message_delay):
         self._event_simulation = event_simulation
-        self._objects_locations = defaultdict(set)
+        self._object_locations = defaultdict(lambda: {})
         self._object_sizes = {}
         self._update_handlers = defaultdict(list)
         self._data_transfer_time_cost = data_transfer_time_cost
         self._db_message_delay = db_message_delay
         self._awaiting_completion = defaultdict(list)
-        self._unready_objects_locations = defaultdict(set)
+
+    def expect_object(self, object_id, node_id):
+        if node_id not in self._object_locations[object_id] or self._object_locations[object_id][node_id] != ObjectStatus.READY:
+            self._object_locations[object_id][node_id] = ObjectStatus.EXPECTED
 
     def add_object(self, object_id, node_id, object_size):
-        #del self._unready_objects_locations[object_id]
-        self._objects_locations[object_id].add(node_id)
+        self._object_locations[object_id][node_id] = ObjectStatus.READY
         self._object_sizes[object_id] = object_size
         self._yield_object_ready_update(object_id, node_id, object_size)
         if object_id in self._awaiting_completion.keys():
@@ -131,21 +133,14 @@ class ObjectStoreRuntime():
                     self._copy_object(object_id, d_node_id, node_id, on_done) 
             del self._awaiting_completion[object_id]
 
-    def schedule_object(self, object_id, node_id, object_size):
-        self._unready_objects_locations[object_id].add(node_id)
-        self._object_sizes[object_id] = object_size
-
-    def get_unready_locations(self, object_id):
-        return self._unready_objects_locations[object_id]
-
-    def get_locations(self, object_id):
-        return self._objects_locations[object_id]
-
     def get_updates(self, node_id, update_handler):
         self._update_handlers[str(node_id)].append(update_handler)
 
     def is_local(self, object_id, node_id):
-        return node_id in self._objects_locations[object_id]
+        if node_id in self._object_locations[object_id]:
+            return self._object_locations[object_id][node_id]
+        else:
+            return ObjectStatus.UNKNOWN
 
     def get_object_size(self, node_id, object_id, result_handler):
         handler = lambda: result_handler(self._object_sizes(object_id))
@@ -155,6 +150,18 @@ class ObjectStoreRuntime():
         else:
             self._event_simulation.schedule_delayed(self._db_message_delay, handler)
 
+    def get_object_size_locations(self, object_id, result_handler):
+        if object_id in self._object_sizes.keys():
+            size = self._object_sizes[object_id]
+        else:
+            size = None
+        if object_id in self._object_locations.keys():
+            location_status = self._object_locations[object_id]
+        else:
+            location_status = None
+        handler = lambda: result_handler(object_id, size, location_status)
+        self._event_simulation.schedule_delayed(self._db_message_delay, handler)
+
     def _yield_object_ready_update(self, object_id, node_id, object_size):
         self._yield_update(node_id, ObjectReadyUpdate(ObjectDescription(object_id, node_id, object_size), node_id))
 
@@ -163,23 +170,26 @@ class ObjectStoreRuntime():
             update_handler(update)
 
     def require_object(self, object_id, node_id, on_done):
-        object_locations = self._objects_locations[object_id]
-        if node_id in object_locations:
+        object_ready_locations = dict(filter(lambda (node_id, status): status == ObjectStatus.READY, self._object_locations[object_id].items()))
+        if node_id in object_ready_locations.keys():
             # TODO - we aren't firing the ObjectReadyUpdate in this scenario. Should we be doing so?
 #            print "require has locally"
             on_done()
         else:
+            # TODO - I don't think we are properly handling the case where the object completes on a remote
+            # node and then we have to copy it over locally.
 #            print "require doesn't have locally"
-            if not object_locations:
+            if not object_ready_locations:
                 self._awaiting_completion[object_id].append((node_id, on_done))
             else:
                 # TODO better way to choose an element from a set than list(set)[0]
-                self._copy_object(object_id, node_id, list(object_locations)[0], on_done)
+                source_location = list(object_ready_locations.keys())[0]
+                self._copy_object(object_id, node_id, source_location, on_done)
 
     def _copy_object(self, object_id, dst_node_id, src_node_id, on_done):
         if dst_node_id == src_node_id:
             on_done()
-        elif src_node_id in self._objects_locations[object_id]:
+        elif src_node_id in self._object_locations[object_id].keys() and self._object_locations[object_id][src_node_id] == ObjectStatus.READY:
             print "moving object to {} from {}".format(dst_node_id, src_node_id)
             data_transfer_time = self._object_sizes[object_id] * self._data_transfer_time_cost
             self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_moved(object_id, dst_node_id, on_done))
@@ -187,7 +197,7 @@ class ObjectStoreRuntime():
             raise RuntimeError('Unexpected failure to copy object {} to {} from {}'.format(object_id, dst_node_id, src_node_id))
 
     def _object_moved(self, object_id, dst_node_id, on_done):
-        self._objects_locations[object_id].add(dst_node_id)
+        self._object_locations[object_id][dst_node_id] = ObjectStatus.READY
         self._yield_object_ready_update(object_id, dst_node_id, self._object_sizes[object_id])
         on_done()
 
@@ -220,8 +230,8 @@ class NodeRuntime():
         self.node_id = node_id
         self.num_workers_executing = 0
 
-        self._time_buffer_size = 20
-        self._task_start_times = deque([], self._time_buffer_size)   
+        self._time_buffer_size = 10
+        self._task_start_times = deque([0], self._time_buffer_size)   
         self._task_times = deque([], self._time_buffer_size)
         self._task_start_times_map = {}
 
@@ -234,15 +244,19 @@ class NodeRuntime():
     def is_local(self, object_id):
         return self._object_store.is_local(object_id, self.node_id)
 
+    def get_object_size_locations(self, object_id, result_handler):
+        return self._object_store.get_object_size_locations(object_id, result_handler)
 
     def get_object_size(self, object_id, handler):
         return self._object_store.get_object_size(self.node_id, object_id,
                                                   handler)
 
     def get_dispatch_queue_size(self):
+        #print "threshold scheduler debug: dispatcher queue is: {}".format(self._queue)
         return len(self._queue)
 
     def get_node_eff_rate(self):
+        #print "threshold scheduler debug: task_start_times buffer is {}".format(self._task_start_times)
         if (self._task_start_times[-1] - self._task_start_times[0]) == 0 :
             return 0
         return len(self._task_start_times) / (self._task_start_times[-1] - self._task_start_times[0])
@@ -251,6 +265,8 @@ class NodeRuntime():
         return 1 if len(self._task_times) == 0 else sum(self._task_times) / len(self._task_times)
 
     def send_to_dispatcher(self, task, priority):
+        for result in task.get_results():
+        	self._object_store.expect_object(result.object_id, self.node_id)
         self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority), extra={'timestamp':self._event_simulation.get_time()})
         task_id = task.id()
         heapq.heappush(self._queue, (priority, self._queue_seq, task_id))
@@ -300,6 +316,7 @@ class NodeRuntime():
         self._internal_scheduler_schedule(task_id, 0)
 
     def _process_tasks(self):
+        #print "threshold scheduler debug: dispatcher queue in node {} is {}".format(self.node_id, self._queue)
         while self.num_workers_executing < self.num_workers and self._queue:
             (_, _, task_id) = heapq.heappop(self._queue)
             self._start_task(task_id)
@@ -602,6 +619,9 @@ class ComputationDescription():
 
     def get_task(self, task_id):
         return self._tasks[task_id]
+
+    def get_task_ids(self):
+        return self._tasks.keys()
 
 
 class Task():

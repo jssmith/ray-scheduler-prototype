@@ -7,6 +7,8 @@ from collections import namedtuple
 import replaystate
 from replaystate import *
 
+import schedulerbase
+
 from replaytrace import schedulers
 from replaytrace import simulate
 
@@ -212,6 +214,62 @@ def valid_trace_suite():
         'delay_validation',
         'no_result']
     return unittest.TestSuite(map(TestValidTrace, test_names))
+
+
+class TestCompletion(unittest.TestCase):
+    def __init__(self, name, scheduler_str):
+        self._method_name = 'test_completion:{}:{}'.format(name, scheduler_str)
+        super(TestCompletion, self).__init__(self._method_name)
+        self._name = name
+        self._scheduler_str = scheduler_str
+
+    def __getattr__(self, name):
+        if name == self._method_name:
+            return self.runTest
+
+    class ValidatingLogger():
+        def __init__(self, test, event_simulation, all_task_ids):
+            self._test = test
+            self._event_simulation = event_simulation
+            self._finished_tasks = set()
+            self._all_task_ids = all_task_ids
+
+        def task_started(self, task_id, node_id):
+            pass
+
+        def task_finished(self, task_id, node_id):
+            self._finished_tasks.add(task_id)
+
+        def verify_all_finished(self):
+            self._test.assertItemsEqual(self._all_task_ids, self._finished_tasks)
+
+    def runTest(self):
+        import json
+        trace_fn = os.path.join(script_path(), 'traces', 'test', self._name + '.json')
+        expected_fn = os.path.join(script_path(), 'traces', 'validation', self._name + '.json')
+        trace_f = open(trace_fn, 'r')
+        computation = json.load(trace_f, object_hook=computation_decoder)
+        trace_f.close()
+
+        num_nodes = 2
+        num_workers_per_node = 8
+        transfer_time_cost = .001
+        db_message_delay = .0001
+        event_simulation = replaystate.EventSimulation()
+        logger = self.ValidatingLogger(self, event_simulation, computation.get_task_ids())
+        scheduler_type = schedulers[self._scheduler_str]
+        simulate(computation, scheduler_type, event_simulation, logger, num_nodes, num_workers_per_node, transfer_time_cost, db_message_delay)
+        logger.verify_all_finished()
+
+
+def trace_scheduler_matrix_suite():
+    import glob
+    files = glob.glob(os.path.join(script_path(), 'traces', 'test', '*.json'))
+    test_names = list(map(lambda x: os.path.splitext(os.path.split(x)[1])[0], files))
+    test_names.sort()
+    return unittest.TestSuite([
+            TestCompletion(trace, scheduler) for trace in test_names for scheduler in schedulers.keys()
+        ])
 
 def script_path():
     return os.path.dirname(os.path.realpath(__file__))
@@ -438,6 +496,7 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self.event_simulation = EventSimulation()
         self.os = ObjectStoreRuntime(self.event_simulation, .001, 0)
         self.last_ready = defaultdict(list)
+        self.size_locations = {}
 
     def _fn_ready(self, object_id, node_id):
         self.last_ready[(object_id, node_id)].append(self.event_simulation.get_time())
@@ -448,22 +507,32 @@ class TestObjectStoreRuntime(unittest.TestCase):
     def _last_ready(self, object_id, node_id):
         return self.last_ready[(object_id, node_id)]
 
+    def _retrieve_sizes_locations(self, object_id):
+        self.os.get_object_size_locations(object_id, lambda object_id, object_size, object_locations: self._location_handler(object_id, object_size, object_locations))
+        self.event_simulation.advance()
+
+    def _location_handler(self, object_id, object_size, object_locations):
+        self.size_locations[object_id] = (object_size, object_locations)
+
     def _add_object(self, object_id, node_id, size):
         self.os.add_object(object_id, node_id, size)
 
     def test_no_objects(self):
-        self.assertItemsEqual([], self.os.get_locations('1'))
+        self._retrieve_sizes_locations('1')
+        self.assertEqual((None, None), self.size_locations['1'])
 
     def test_one_object(self):
         self._add_object('1', 0, 100)
-        self.assertItemsEqual([0], self.os.get_locations('1'))
+        self._retrieve_sizes_locations('1')
+        self.assertEqual((100, {0: schedulerbase.ObjectStatus.READY}), self.size_locations['1'])
 
     def test_moved_object(self):
         self.assertEquals(0, self.event_simulation.get_time())
         self._add_object('1', 0, 200)
-        self.assertItemsEqual([0], self.os.get_locations('1'))
+        self._retrieve_sizes_locations('1')
+        self.assertEqual((200, {0: schedulerbase.ObjectStatus.READY}), self.size_locations['1'])
 
-        self.assertFalse(self.os.is_local('1', 1))
+        self.assertEqual(schedulerbase.ObjectStatus.UNKNOWN, self.os.is_local('1', 1))
 
         self._require_object('1', 0)
         self.event_simulation.advance()
@@ -910,7 +979,7 @@ if __name__ == '__main__':
         unittest.main()
         sys.exit(0)
     # Else, run all of the tests, generated by the JSON files in ./traces.
-    tests = unittest.TestSuite([invalid_trace_suite(), valid_trace_suite()] +
+    tests = unittest.TestSuite([invalid_trace_suite(), valid_trace_suite(), trace_scheduler_matrix_suite()] +
                 list(map(lambda x: unittest.TestLoader().loadTestsFromTestCase(x),
                 [TestEventLoopTimers, TestComputationObjects, TestSchedulerObjects,
                  TestReplayState, TestObjectStoreRuntime, TestNodeRuntime,

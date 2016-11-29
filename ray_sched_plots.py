@@ -54,7 +54,7 @@ def drawplots(args):
             #fig1data_reduced = np.c_[np.column_stack((fig1data[:,5], fig1data[:,1])), fig1data[:,10]].astype(np.float)
 
             resource_capacity = np.multiply(fig1data[:,6].astype(np.float),fig1data[:,7].astype(np.float))
-            critical_path = np.multiply(fig1data[:,10].astype(np.float),fig1data[:,5].astype(np.float))
+            critical_path = np.multiply(fig1data[:,2].astype(np.float),fig1data[:,5].astype(np.float))
             #Old Normalized Job Completion Time: Job Completion Time / (Total Task Durations / (number_of_nodes * workers_per_node))
             fig1data_reduced = np.c_[np.column_stack((fig1data[:,5], fig1data[:,1])), np.divide(fig1data[:,10].astype(np.float),np.divide(fig1data[:,2].astype(np.float), resource_capacity))].astype(np.float)
             #Normalized Job Complegtion Time: Job Completion Time / Critical Path Time
@@ -75,7 +75,8 @@ def drawplots(args):
         #fig1sp_cont[k].set_zlabel('Job Completion Time [seconds]')
         fig1sp_scatter[k].set_zlabel('Normalized Job Completion Time [a.u]')
         fig1sp_scatter[k].set_title('Job Completion Time vs. DAG Load Parmeter for Data Transfer Cost ' + unique_data_transfer_cost[k])
-        fig1sp_scatter[k].legend(shadow=True, fancybox=True)
+        if k==0:
+            fig1sp_scatter[k].legend(shadow=True, fancybox=True)
 
 
         fig1sp_cont[k].set_xlabel('Normalized Critical Path [a.u]')
@@ -85,6 +86,56 @@ def drawplots(args):
         fig1sp_cont[k].set_title('Job Completion Time vs. DAG Load Parmeter for Data Transfer Cost' + unique_data_transfer_cost[k])
         if k==0 :
             fig1sp_cont[k].legend(shadow=True, fancybox=True)
+
+
+
+
+    #assuming cluster size of: 10 nodes, 3 workers per node
+    #Exploratory graph: compare job completition time of different schedulers for different data transfer costs (2d plots: normalized job completion time vs. new load definition)
+    #new load definition: total_task_durations / (critical_path * number of workers * number of nodes)
+    fig6_scatter = plt.figure()
+    fig6_cont = plt.figure()
+    fig6sp_scatter = {}
+    fig6sp_cont = {}
+    fig6sp_height = int(math.sqrt(len(unique_data_transfer_cost)))
+    fig6sp_width = len(unique_data_transfer_cost) / fig1sp_height + len(unique_data_transfer_cost)%fig1sp_height     
+    for k in range(len(unique_data_transfer_cost)):
+        fig6sp_scatter[k] = fig6_scatter.add_subplot(2,3,k+1)
+        fig6sp_cont[k] = fig6_cont.add_subplot(2,3,k+1)
+        for sched in scheduler_types:
+            fig6data = sim_sweep_csv[np.logical_and( \
+                                     np.logical_and( \
+                                     sim_sweep_csv[:,9]==sched, \
+                                     sim_sweep_csv[:,8]==unique_data_transfer_cost[k]), \
+                                     sim_sweep_csv[:,10]!='-1')]
+            
+            #before job completion time normalization
+            #fig6data_reduced = np.c_[np.column_stack((fig1data[:,5], fig1data[:,1])), fig1data[:,10]].astype(np.float)
+
+            resource_capacity = np.multiply(fig6data[:,6].astype(np.float),fig6data[:,7].astype(np.float))
+            critical_path = np.multiply(fig6data[:,2].astype(np.float),fig6data[:,5].astype(np.float))
+            load = np.divide(fig6data[:,2].astype(np.float), np.multiply(critical_path, resource_capacity))
+            #Normalized Job Complegtion Time: Job Completion Time / Critical Path Time
+            fig6data_reduced = np.column_stack((load, np.divide(fig6data[:,10].astype(np.float),critical_path))).astype(np.float)           
+            
+            fig6sp_scatter[k].scatter(fig6data_reduced[:,0], fig6data_reduced[:,1], c=colors.next(), marker=markers.next(), label=sched)
+       
+            fig6sp_cont[k].plot(fig6data_reduced[:,0],fig6data_reduced[:,1], c=colors.next(), label=sched)
+         
+
+        fig6sp_scatter[k].set_xlabel('Load Factor (ro) [a.u]')
+        fig6sp_scatter[k].set_ylabel('Normalized Job Completion Time [a.u]')
+        fig6sp_scatter[k].set_title('Norm Job Completion Time vs. DAG Load Parmeter for Data Transfer Cost ' + unique_data_transfer_cost[k])
+        if k==0:
+            fig6sp_scatter[k].legend(shadow=True, fancybox=True)
+
+
+        fig6sp_cont[k].set_xlabel('Load Factor [a.u]')
+        fig6sp_cont[k].set_ylabel('Normalized Job Completion Time [a.u]')
+        fig6sp_cont[k].set_title('Norm Job Completion Time vs. DAG Load Parmeter for Data Transfer Cost' + unique_data_transfer_cost[k])
+        if k==0 :
+            fig6sp_cont[k].legend(shadow=True, fancybox=True)
+
 
 
 
@@ -156,7 +207,7 @@ def drawplots(args):
         #Old Normalized Job Completion Time: Job Completion Time / (Total Task Durations / (number_of_nodes * workers_per_node))
         #fig3data_reduced = np.column_stack((fig3data[:,1], np.divide(fig3data[:,10].astype(np.float),np.divide(fig3data[:,2].astype(np.float), resource_capacity)))).astype(np.float)
         #Critical Path Time = Normalized Critical Path * Total Task Durations
-        critical_path = np.multiply(fig3data[:,10].astype(np.float),fig3data[:,5].astype(np.float))
+        critical_path = np.multiply(fig3data[:,2].astype(np.float),fig3data[:,5].astype(np.float))
         #Normalized Job Complegtion Time: Job Completion Time / Critical Path Time
         fig3data_reduced = np.column_stack((fig3data[:,1], np.divide(fig3data[:,10].astype(np.float),critical_path))).astype(np.float)
         sched_bar[sched_ind] = fig3_plt.bar(ind+sched_ind*width, fig3data_reduced[:,1], width, color=colors.next(), label=scheduler_types[sched_ind])
@@ -217,7 +268,8 @@ def drawplots(args):
         fig4sp_scatter[wload_ind].set_ylabel('Number of Workers per Node [a.u]')
         fig4sp_scatter[wload_ind].set_zlabel('Job Completion Time [seconds]')
         fig4sp_scatter[wload_ind].set_title('Job Completion Time vs. Cluster Parameters: {} Workload'.format(workload_types[wload_ind]))
-        fig4sp_scatter[wload_ind].legend(shadow=True, fancybox=True)
+        if wload_ind==0:
+            fig4sp_scatter[wload_ind].legend(shadow=True, fancybox=True)
 
         fig4sp_cont[wload_ind].set_xlabel('Number of Nodes [a.u]')
         fig4sp_cont[wload_ind].set_ylabel('Number of Workers per Node [a.u]')
@@ -225,6 +277,62 @@ def drawplots(args):
         fig4sp_cont[wload_ind].set_title('Job Completion Time vs. Cluster Parameters: {} Workload'.format(workload_types[wload_ind]))
         if wload_ind==0 :
             fig4sp_cont[wload_ind].legend(shadow=True, fancybox=True)
+
+
+    #characterize the schedulers compared to environment (assume workload parameters are constant)
+    #assuming an RNN, rl-pong, alexnet workload of size (number of tasks) X
+    #production graph: compare job completion time of different schedulers for RNN workloads data transfer cost 0.1 (2d plot: time vs. num_nodes)
+    #production graph: compare job completion time of different schedulers for rl-pong workloads data transfer cost 0.1 (2d plot: time vs. num_nodes)
+    #production graph: compare job completion time of different schedulers for alexnet workloads data transfer cost 0.1 (2d plot: time vs. num_nodes)
+
+    fig5_scatter = plt.figure()
+    fig5_cont = plt.figure()
+    fig5sp_scatter = {}
+    fig5sp_cont = {}
+    fig5_scatter.suptitle('Job Completion Time for Workloads of size 200 Tasks')
+    fig5_cont.suptitle('Job Completion Time for Workloads of size 200 Tasks')
+
+
+
+ #generalization loop:
+    fig5sp_height = int(math.sqrt(len(workload_types)))
+    fig5sp_width = len(workload_types) / fig5sp_height + len(workload_types)%fig5sp_height
+    for wload_ind in range(len(workload_types)):
+        fig5sp_scatter[wload_ind] = fig5_scatter.add_subplot(fig5sp_height,fig5sp_width,wload_ind+1)
+        fig5sp_cont[wload_ind] = fig5_cont.add_subplot(fig5sp_height,fig5sp_width,wload_ind+1)
+        for sched in scheduler_types:
+            fig5data = sim_sweep_csv[np.logical_and( \
+                                     np.logical_and( \
+                                     np.logical_and( \
+                                     np.logical_and( \
+                                     np.logical_and( \
+                                     np.logical_and( \
+                                     sim_sweep_csv[:,0]==workload_types[wload_ind], \
+                                     sim_sweep_csv[:,9]==sched), \
+                                     sim_sweep_csv[:,7].astype(np.float)==3), \
+                                     sim_sweep_csv[:,8].astype(np.float)==dtc), \
+                                     sim_sweep_csv[:,1].astype(np.float) >200), \
+                                     sim_sweep_csv[:,1].astype(np.float) <250), \
+                                     sim_sweep_csv[:,10]!='-1')]
+            fig5data_reduced = np.column_stack((fig5data[:,6], fig5data[:,10])).astype(np.float)
+
+            fig5sp_scatter[wload_ind].scatter(fig5data_reduced[:,0], fig5data_reduced[:,1],c=colors.next(), marker=markers.next(), label=sched)
+
+            fig5sp_cont[wload_ind].plot(fig5data_reduced[:,0], fig5data_reduced[:,1],c=colors.next(), label=sched)
+
+
+        fig5sp_scatter[wload_ind].set_xlabel('Number of Nodes [a.u]')
+        fig5sp_scatter[wload_ind].set_ylabel('Job Completion Time [seconds]')
+        fig5sp_scatter[wload_ind].set_title('Job Completion Time vs. Number of Nodes: {} Workload'.format(workload_types[wload_ind]))
+        if wload_ind==0 :
+            fig5sp_scatter[wload_ind].legend(shadow=True, fancybox=True)
+
+        fig5sp_cont[wload_ind].set_xlabel('Number of Nodes [a.u]')
+        fig5sp_cont[wload_ind].set_ylabel('Job Completion Time [seconds]')
+        fig5sp_cont[wload_ind].set_title('Job Completion Time vs. Number of Nodes: {} Workload'.format(workload_types[wload_ind]))
+        if wload_ind==0 :
+            fig5sp_cont[wload_ind].legend(shadow=True, fancybox=True)
+
 
 
 

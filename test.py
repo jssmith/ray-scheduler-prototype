@@ -612,6 +612,9 @@ class TestNodeRuntime(unittest.TestCase):
             else:
                 self._awaiting_objects[(str(object_id), str(node_id))].append(on_done)
 
+        def expect_object(self, object_id, node_id):
+            pass
+
     class RecordingLogger():
         def __init__(self, event_simulation):
 #            self._test = test

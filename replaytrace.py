@@ -3,8 +3,9 @@ from trivialscheduler import *
 import json
 
 import sys
-import logging
 import imp
+
+from helpers import TimestampedLogger
 
 schedulers = {
     'trivial' : TrivialScheduler,
@@ -58,10 +59,8 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
     for node_id, local_runtime in local_runtimes.items():
         num_workers_executing += local_runtime.num_workers_executing
     if num_workers_executing > 0:
-        pylogger = logging.getLogger(__name__+'.simulate')
-        pylogger.debug("failed to execute fully".format(
-            num_workers_executing),
-            extra={'timestamp':event_simulation.get_time()})
+        pylogger = TimestampedLogger(__name__+'.simulate', event_simulation)
+        pylogger.debug("failed to execute fully".format(num_workers_executing))
         print "{:.6f}: Simulation Error. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
         print "-1: {} : {} : {} : {} : {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
         return False
@@ -69,11 +68,6 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
         print "{:.6f}: Simulation finished successfully. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
         print "{:.6f}: {} : {} : {} : {} : {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
         return True
-
-def setup_logging():
-    logging_format = '%(timestamp).6f %(name)s %(message)s'
-    logging.basicConfig(format=logging_format)
-    logging.getLogger().setLevel(logging.DEBUG)
 
 def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
                db_message_delay, scheduler_name, trace_filename,

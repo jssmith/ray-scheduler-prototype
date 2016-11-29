@@ -1,6 +1,5 @@
 import unittest
 import os
-import logging
 from collections import namedtuple
 
 # TODO both of these needed?
@@ -11,6 +10,8 @@ import schedulerbase
 
 from replaytrace import schedulers
 from replaytrace import simulate
+
+from helpers import setup_logging
 
 class TestEventLoopTimers(unittest.TestCase):
     def setUp(self):
@@ -305,9 +306,7 @@ class TestSchedulerObjects(unittest.TestCase):
 class TestReplayStateBase(unittest.TestCase):
 
     def setUp(self):
-        logging_format = '%(timestamp).6f %(name)s %(message)s'
-        logging.basicConfig(format=logging_format)
-        logging.getLogger().setLevel(logging.DEBUG)
+        setup_logging()
 
         self.event_simulation = EventSimulation()
         self.event_loop = EventLoop(self.event_simulation)
@@ -633,11 +632,7 @@ class TestNodeRuntime(unittest.TestCase):
 
 
     def setUp(self):
-        logging_format = '%(timestamp).6f %(name)s %(message)s'
-        logging.basicConfig(format=logging_format)
-        logging.getLogger().setLevel(logging.DEBUG)
-#        FORMAT = '%(asctime)-15s %(clientip)s %(user)-8s %(message)s'
-
+        setup_logging()
 
         self.event_simulation = EventSimulation()
         self.object_store = self.ObjectStore(self.event_simulation, self)

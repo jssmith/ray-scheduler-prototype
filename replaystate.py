@@ -107,8 +107,9 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
 
 
 class ObjectStoreRuntime():
-    def __init__(self, event_simulation, data_transfer_time_cost, db_message_delay):
+    def __init__(self, event_simulation, logger, data_transfer_time_cost, db_message_delay):
         self._event_simulation = event_simulation
+        self._logger = logger
         self._object_locations = defaultdict(lambda: {})
         self._object_sizes = {}
         self._update_handlers = defaultdict(list)
@@ -189,14 +190,16 @@ class ObjectStoreRuntime():
         if dst_node_id == src_node_id:
             on_done()
         elif src_node_id in self._object_locations[object_id].keys() and self._object_locations[object_id][src_node_id] == ObjectStatus.READY:
-            print "moving object to {} from {}".format(dst_node_id, src_node_id)
-            data_transfer_time = self._object_sizes[object_id] * self._data_transfer_time_cost
-            self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_moved(object_id, dst_node_id, on_done))
+            object_size = self._object_sizes[object_id]
+            data_transfer_time = object_size * self._data_transfer_time_cost
+            self._logger.object_transfer_started(object_id, object_size, src_node_id, dst_node_id)
+            self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_moved(object_id, object_size, src_node_id, dst_node_id, on_done))
         else:
             raise RuntimeError('Unexpected failure to copy object {} to {} from {}'.format(object_id, dst_node_id, src_node_id))
 
-    def _object_moved(self, object_id, dst_node_id, on_done):
+    def _object_moved(self, object_id, object_size, src_node_id, dst_node_id, on_done):
         self._object_locations[object_id][dst_node_id] = ObjectStatus.READY
+        self._logger.object_transfer_finished(object_id, object_size, src_node_id, dst_node_id)
         self._yield_object_ready_update(object_id, dst_node_id, self._object_sizes[object_id])
         on_done()
 
@@ -809,21 +812,9 @@ class DirectedGraph():
         return result 
  
 
-
 class ValidationError(Exception):
     def __init__(self, message):
         super(ValidationError, self).__init__(message)
-
-
-class PrintingLogger():
-    def __init__(self, event_simulation):
-        self._event_simulation = event_simulation
-
-    def task_started(self, task_id, node_id):
-        print '{:.6f}: execute task {} on node {}'.format(self._event_simulation.get_time(), task_id, node_id)
-
-    def task_finished(self, task_id, node_id):
-        print '{:.6f}: finished task {} on node {}'.format(self._event_simulation.get_time(), task_id, node_id)
 
 
 def computation_decoder(dict):

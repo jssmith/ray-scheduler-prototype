@@ -6,6 +6,7 @@ import sys
 import imp
 
 from helpers import TimestampedLogger
+import statslogging
 
 schedulers = {
     'trivial' : TrivialScheduler,
@@ -36,6 +37,7 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
     if local_scheduler_kwargs is None:
         local_scheduler_kwargs = {}
     object_store = replaystate.ObjectStoreRuntime(event_simulation,
+                                                  logger,
                                                   object_transfer_time_cost,
                                                   db_message_delay)
     scheduler_db = replaystate.ReplaySchedulerDatabase(event_simulation, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
@@ -65,6 +67,7 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
         print "-1: {} : {} : {} : {} : {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
         return False
     else:
+        logger.job_ended()
         print "{:.6f}: Simulation finished successfully. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
         print "{:.6f}: {} : {} : {} : {} : {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
         return True
@@ -82,7 +85,7 @@ def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
 
     setup_logging()
     event_simulation = replaystate.EventSimulation()
-    logger = replaystate.PrintingLogger(event_simulation)
+    logger = statslogging.StatsLogger(event_simulation)
     simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
              num_workers_per_node, object_transfer_time_cost, db_message_delay,
              global_scheduler_kwargs, local_scheduler_kwargs)

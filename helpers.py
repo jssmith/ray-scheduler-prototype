@@ -8,7 +8,18 @@ class TimestampedLogger():
     def debug(self, message):
         self._logger.debug(message, extra={'timestamp':self._system_time.get_time()})
 
-    # TODO add other logging levels
+    def info(self, message):
+        self._logger.info(message, extra={'timestamp':self._system_time.get_time()})
+
+    def warning(self, message):
+        self._logger.warning(message, extra={'timestamp':self._system_time.get_time()})
+
+    def error(self, message):
+        self._logger.error(message, extra={'timestamp':self._system_time.get_time()})
+
+    def critical(self, message):
+        self._logger.critical(message, extra={'timestamp':self._system_time.get_time()})
+
 
 def setup_logging():
     logging_format = '%(timestamp).6f %(name)s %(message)s'

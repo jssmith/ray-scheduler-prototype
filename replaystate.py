@@ -756,19 +756,23 @@ class DirectedGraph():
         #print 'root: {}'.format(root_id)
         #print edge_lists
 
-        def visit(x):
-            #print 'visit {}'.format(x)
-            if in_chain[x]:
-                raise ValidationError('Cyclic dependencies')
-            in_chain[x] = True
-            if not visited[x]:
-                visited[x] = True
-                if x in edge_lists.keys():
-                    for y in edge_lists[x]:
-                        visit(y)
-            in_chain[x] = False
-
-        visit(root_id)
+        to_visit = [(root_id, 0)]
+        while to_visit:
+            (x, index) = to_visit.pop()
+            if index == 0:
+                if in_chain[x]:
+                    raise ValidationError('Cyclic dependencies')
+                if not visited[x]:
+                    visited[x] = True
+            if x in edge_lists.keys():
+                if index == 0:
+                    in_chain[x] = True
+                if index < len(edge_lists[x]):
+                    y = edge_lists[x][index]
+                    to_visit.append((x, index + 1))
+                    to_visit.append((y, 0))
+                else:
+                    in_chain[x] = False
         if False in visited:
             raise ValidationError('Reachability from root')
 

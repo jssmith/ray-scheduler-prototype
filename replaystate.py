@@ -1,13 +1,12 @@
 import sys
 import heapq
 import itertools
-import logging
 import types
 
 from collections import defaultdict
 from collections import deque
 from schedulerbase import *
-
+from helpers import TimestampedLogger
 
 ################################################################
 #        Scheduler Database that Replays Saved Traces          #
@@ -20,10 +19,10 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self.replay_scheduler_database = replay_scheduler_database
             self.update = update
 
-    def __init__(self, time_source, logger, computation, num_nodes, num_workers_per_node, data_transfer_time_cost, db_message_delay):
-        self._pylogger = logging.getLogger(__name__+'.ReplaySchedulerDatabase')
+    def __init__(self, event_simulation, logger, computation, num_nodes, num_workers_per_node, data_transfer_time_cost, db_message_delay):
+        self._pylogger = TimestampedLogger(__name__+'.ReplaySchedulerDatabase', event_simulation)
 
-        self._event_simulation = time_source
+        self._event_simulation = event_simulation
         self._logger = logger
         self._computation = computation
         self._data_transfer_time_cost = data_transfer_time_cost
@@ -79,12 +78,12 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             raise NotImplementedError('Unable to handle update of type {}'.format(type(nextUpdate)))
 
     def _yield_global_scheduler_update(self, update):
-        self._pylogger.debug('sending update to global scheduler: {}'.format(str(update)), extra={'timestamp':self._event_simulation.get_time()})
+        self._pylogger.debug('sending update to global scheduler: {}'.format(str(update)))
         for handler in self._global_scheduler_update_handlers:
             self._event_simulation.schedule_delayed(self._db_message_delay, lambda handler=handler:handler(update))
 
     def _yield_local_scheduler_update(self, update):
-        self._pylogger.debug('sending update to node {} local scheduler: {}'.format(str(update.node_id), str(update)), extra={'timestamp':self._event_simulation.get_time()})
+        self._pylogger.debug('sending update to node {} local scheduler: {}'.format(str(update.node_id), str(update)))
 #        print "yield locally targeting {}".format(update.node_id)
 #        print "lsh" + str(self._local_scheduler_update_handlers)
         for handler in self._local_scheduler_update_handlers[str(update.node_id)]:
@@ -108,8 +107,9 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
 
 
 class ObjectStoreRuntime():
-    def __init__(self, event_simulation, data_transfer_time_cost, db_message_delay):
+    def __init__(self, event_simulation, logger, data_transfer_time_cost, db_message_delay):
         self._event_simulation = event_simulation
+        self._logger = logger
         self._object_locations = defaultdict(lambda: {})
         self._object_sizes = {}
         self._update_handlers = defaultdict(list)
@@ -190,14 +190,16 @@ class ObjectStoreRuntime():
         if dst_node_id == src_node_id:
             on_done()
         elif src_node_id in self._object_locations[object_id].keys() and self._object_locations[object_id][src_node_id] == ObjectStatus.READY:
-            print "moving object to {} from {}".format(dst_node_id, src_node_id)
-            data_transfer_time = self._object_sizes[object_id] * self._data_transfer_time_cost
-            self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_moved(object_id, dst_node_id, on_done))
+            object_size = self._object_sizes[object_id]
+            data_transfer_time = object_size * self._data_transfer_time_cost
+            self._logger.object_transfer_started(object_id, object_size, src_node_id, dst_node_id)
+            self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_moved(object_id, object_size, src_node_id, dst_node_id, on_done))
         else:
             raise RuntimeError('Unexpected failure to copy object {} to {} from {}'.format(object_id, dst_node_id, src_node_id))
 
-    def _object_moved(self, object_id, dst_node_id, on_done):
+    def _object_moved(self, object_id, object_size, src_node_id, dst_node_id, on_done):
         self._object_locations[object_id][dst_node_id] = ObjectStatus.READY
+        self._logger.object_transfer_finished(object_id, object_size, src_node_id, dst_node_id)
         self._yield_object_ready_update(object_id, dst_node_id, self._object_sizes[object_id])
         on_done()
 
@@ -220,7 +222,7 @@ class ObjectDescription():
 
 class NodeRuntime():
     def __init__(self, event_simulation, object_store, logger, computation, node_id, num_workers):
-        self._pylogger = logging.getLogger(__name__+'.NodeRuntime')
+        self._pylogger = TimestampedLogger(__name__+'.NodeRuntime', event_simulation)
         self._event_simulation = event_simulation
         self._object_store = object_store
         self._logger = logger
@@ -267,7 +269,7 @@ class NodeRuntime():
     def send_to_dispatcher(self, task, priority):
         for result in task.get_results():
         	self._object_store.expect_object(result.object_id, self.node_id)
-        self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority), extra={'timestamp':self._event_simulation.get_time()})
+        self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority))
         task_id = task.id()
         heapq.heappush(self._queue, (priority, self._queue_seq, task_id))
         self._queue_seq += 1
@@ -326,7 +328,7 @@ class NodeRuntime():
             update_handler(update)
 
     def _execute_phase_immediate(self, task_id, phase_id):
-        self._pylogger.debug('executing task {} phase {}'.format(task_id, phase_id), extra={'timestamp':self._event_simulation.get_time()})
+        self._pylogger.debug('executing task {} phase {}'.format(task_id, phase_id))
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
         for put_event in task_phase.creates:
             self._event_simulation.schedule_delayed(
@@ -352,19 +354,19 @@ class NodeRuntime():
         if not needs.has_dependencies():
             self._execute_phase_immediate(task_id, phase_id)
         else:
-            self._pylogger.debug('task {} phase {} waiting for dependencies: {}'.format(task_id, phase_id, str(needs.object_dependencies)), extra={'timestamp':self._event_simulation.get_time()})
+            self._pylogger.debug('task {} phase {} waiting for dependencies: {}'.format(task_id, phase_id, str(needs.object_dependencies)))
 
     def _handle_update(self, update):
         if isinstance(update, self.TaskSubmitted):
             self._event_simulation.schedule_immediate(lambda: self._yield_update(SubmitTaskUpdate(self._computation.get_task(update.submitted_task_id))))
         elif isinstance(update, self.TaskPhaseComplete):
-            self._pylogger.debug('completed task {} phase {}'.format(update.task_id, update.phase_id), extra={'timestamp':self._event_simulation.get_time()})
+            self._pylogger.debug('completed task {} phase {}'.format(update.task_id, update.phase_id))
             task = self._computation.get_task(update.task_id)
             if update.phase_id < task.num_phases() - 1:
-                self._pylogger.debug('task {} has further phases'.format(update.task_id), extra={'timestamp':self._event_simulation.get_time()})
+                self._pylogger.debug('task {} has further phases'.format(update.task_id))
                 self._event_simulation.schedule_immediate(lambda: self._internal_scheduler_schedule(update.task_id, update.phase_id + 1))
             else:
-                self._pylogger.debug('completed task {}'.format(update.task_id), extra={'timestamp':self._event_simulation.get_time()})
+                self._pylogger.debug('completed task {}'.format(update.task_id))
                 self._logger.task_finished(update.task_id, self.node_id)
                 for res in task.get_results():
                     self._object_store.add_object(res. object_id, self.node_id, res.size)
@@ -754,19 +756,23 @@ class DirectedGraph():
         #print 'root: {}'.format(root_id)
         #print edge_lists
 
-        def visit(x):
-            #print 'visit {}'.format(x)
-            if in_chain[x]:
-                raise ValidationError('Cyclic dependencies')
-            in_chain[x] = True
-            if not visited[x]:
-                visited[x] = True
-                if x in edge_lists.keys():
-                    for y in edge_lists[x]:
-                        visit(y)
-            in_chain[x] = False
-
-        visit(root_id)
+        to_visit = [(root_id, 0)]
+        while to_visit:
+            (x, index) = to_visit.pop()
+            if index == 0:
+                if in_chain[x]:
+                    raise ValidationError('Cyclic dependencies')
+                if not visited[x]:
+                    visited[x] = True
+            if x in edge_lists.keys():
+                if index == 0:
+                    in_chain[x] = True
+                if index < len(edge_lists[x]):
+                    y = edge_lists[x][index]
+                    to_visit.append((x, index + 1))
+                    to_visit.append((y, 0))
+                else:
+                    in_chain[x] = False
         if False in visited:
             raise ValidationError('Reachability from root')
 
@@ -810,21 +816,9 @@ class DirectedGraph():
         return result 
  
 
-
 class ValidationError(Exception):
     def __init__(self, message):
         super(ValidationError, self).__init__(message)
-
-
-class PrintingLogger():
-    def __init__(self, event_simulation):
-        self._event_simulation = event_simulation
-
-    def task_started(self, task_id, node_id):
-        print '{:.6f}: execute task {} on node {}'.format(self._event_simulation.get_time(), task_id, node_id)
-
-    def task_finished(self, task_id, node_id):
-        print '{:.6f}: finished task {} on node {}'.format(self._event_simulation.get_time(), task_id, node_id)
 
 
 def computation_decoder(dict):

@@ -2,15 +2,17 @@ from collections import defaultdict
 from collections import namedtuple
 from collections import OrderedDict
 import sys
-import logging
 import numpy as np
 import os
 
 from schedulerbase import *
 from itertools import ifilter
+from helpers import TimestampedLogger, setup_logging
 
 class GlobalSchedulerState():
-    def __init__(self):
+    def __init__(self, system_time):
+        self._pylogger = TimestampedLogger(__name__+'.GlobalSchedulerState', system_time)
+
         # Map from node id to node status
         self.nodes = {}
 
@@ -34,7 +36,7 @@ class GlobalSchedulerState():
         self.finished_tasks = {}
 
         self._pending_needs = {}
-        self._awaiting_completion = {}
+        self._awaiting_completion = defaultdict(list)
 
         self.is_shutdown = False
 
@@ -70,7 +72,7 @@ class GlobalSchedulerState():
         self._update_task_timestats(task_id, "started", timestamp)
 
     def update(self, update, timestamp):
-        print '{:.6f}: GlobalSchedulerState update {}'.format(timestamp, str(update))
+        self._pylogger.debug('GlobalSchedulerState update {}'.format(str(update)))
         if isinstance(update, ForwardTaskUpdate):
 #            print '{} task {} submitted'.format(timestamp, update.task.id())
             self._add_task(update.task, update.submitting_node_id, update.is_scheduled_locally, timestamp)
@@ -98,6 +100,8 @@ class GlobalSchedulerState():
 
     def _add_task(self, task, submitting_node_id, is_scheduled_locally, timestamp):
         task_id = task.id()
+        if task_id in self.tasks.keys():
+            raise RuntimeError('Duplicate addition of task {}'.format(task_id))
         self.tasks[task_id] = task
         if is_scheduled_locally:
             self.set_executing(task_id, submitting_node_id, timestamp)
@@ -106,10 +110,7 @@ class GlobalSchedulerState():
             for d_object_id in task.get_depends_on():
                 if d_object_id not in self.finished_objects.keys():
                     pending_needs.append(d_object_id)
-                    if d_object_id in self._awaiting_completion.keys():
-                        self._awaiting_completion[d_object_id].append(task_id)
-                    else:
-                        self._awaiting_completion[d_object_id] = [task_id]
+                    self._awaiting_completion[d_object_id].append(task_id)
             if len(pending_needs) > 0:
                 self._pending_needs[task_id] = pending_needs
                 self.pending_tasks.append(task_id)
@@ -152,7 +153,7 @@ class BaseGlobalScheduler():
         self._system_time = system_time
         self._db = scheduler_db
         self._event_loop = event_loop
-        self._state = GlobalSchedulerState()
+        self._state = GlobalSchedulerState(system_time)
         scheduler_db.get_global_scheduler_updates(lambda update: self._handle_update(update))
 
     def _execute_task(self, node_id, task_id):
@@ -186,21 +187,19 @@ class BaseGlobalScheduler():
 class TrivialGlobalScheduler(BaseGlobalScheduler):
 
     def __init__(self, system_time, scheduler_db, event_loop):
-        self._pylogger = logging.getLogger(__name__+'.TrivialGlobalScheduler')
+        self._pylogger = TimestampedLogger(__name__+'.TrivialGlobalScheduler', system_time)
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db,
                                      event_loop)
 
     def _select_node(self, task_id):
         self._pylogger.debug("Runnable tasks are {}, checking task {}".format(
             ', '.join(self._state.runnable_tasks),
-            task_id),
-            extra={'timestamp':self._system_time.get_time()})
+            task_id))
         for node_id, node_status in sorted(self._state.nodes.items()):
             self._pylogger.debug("can we schedule task {} on node {}? {} < {} so {}".format(
                 task_id, node_id, node_status.num_workers_executing,
                 node_status.num_workers,
-                bool(node_status.num_workers_executing < node_status.num_workers)),
-                extra={'timestamp':self._system_time.get_time()})
+                bool(node_status.num_workers_executing < node_status.num_workers)))
             #print "global scheduler: node {} num of workers executing {} total num of workers {}".format(node_id, node_status.num_workers_executing, node_status.num_workers)
             if node_status.num_workers_executing < node_status.num_workers:
                 return node_id
@@ -235,7 +234,7 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
     def __init__(self, system_time, scheduler_db, event_loop, delay=1):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db,
                                      event_loop)
-        self._pylogger = logging.getLogger(__name__+'.DelayGlobalScheduler')
+        self._pylogger = TimestampedLogger(__name__+'.DelayGlobalScheduler', system_time)
         self._WaitingInfo = namedtuple('WaitingInfo', ['start_waiting_time', 'expiration_time'])
         self._waiting_tasks = OrderedDict()
         self._max_delay = delay
@@ -265,8 +264,7 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
             if best_node_ready:
                 self._pylogger.debug("now scheduling delayed task {} on node {} - delay is {}".format(
                     task_id, best_node_id,
-                    self._system_time.get_time() - waiting_info.start_waiting_time),
-                    extra={'timestamp':self._system_time.get_time()})
+                    self._system_time.get_time() - waiting_info.start_waiting_time))
                 del self._waiting_tasks[task_id]
                 self._execute_task(best_node_id, task_id)
 
@@ -276,12 +274,10 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
                 (best_node_id, best_node_ready) = self._best_node(task_id)
                 if best_node_ready:
                     self._pylogger.debug("immediately scheduling schedule task {} on node {}".format(
-                        task_id, best_node_id),
-                        extra={'timestamp':self._system_time.get_time()})
+                        task_id, best_node_id))
                     self._execute_task(best_node_id, task_id)
                 else:
-                    self._pylogger.debug("waiting to schedule task {}".format(task_id),
-                                         extra={'timestamp':self._system_time.get_time()})
+                    self._pylogger.debug("waiting to schedule task {}".format(task_id))
                     self._waiting_tasks[task_id] = self._WaitingInfo(
                         self._system_time.get_time(),
                         self._system_time.get_time() + self._max_delay)
@@ -296,23 +292,21 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
             for node_id, node_status in sorted(self._state.nodes.items()):
                 if node_status.num_workers_executing < node_status.num_workers:
                     self._pylogger.debug("delay exceeded, scheduling task {} on node {}".format(
-                        task_id, node_id),
-                        extra={'timestamp':self._system_time.get_time()})
+                        task_id, node_id))
                     del self._waiting_tasks[task_id]
                     self._execute_task(node_id, task_id)
                     return
             # NOTE: Don't we want to place this task somewhere, even if the
             # node is at capacity?
             self._pylogger.debug("delay exceeded but no nodes available, unable to schedule task {}".format(
-                task_id),
-                extra={'timestamp':self._system_time.get_time()})
+                task_id))
 
 class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
 
     def __init__(self, system_time, scheduler_db, event_loop):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db,
                                      event_loop)
-        self._pylogger = logging.getLogger(__name__ + '.TransferCostAwareGlobalScheduler')
+        self._pylogger = TimestampedLogger(__name__ + '.TransferCostAwareGlobalScheduler', system_time)
         self._event_loop = event_loop;
         self._schedcycle = 1; #seconds
         self._initializing = True
@@ -614,6 +608,8 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
 
 class PassthroughLocalScheduler():
     def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
+        self._pylogger = TimestampedLogger(__name__+'.PassthroughLocalScheduler', system_time)
+
         self._system_time = system_time
         self._node_runtime = node_runtime
         self._node_id = node_runtime.node_id
@@ -624,7 +620,7 @@ class PassthroughLocalScheduler():
         self._scheduler_db.get_local_scheduler_updates(self._node_id, lambda update: self._handle_scheduler_db_update(update))
 
     def _handle_runtime_update(self, update):
-        print '{:.6f}: LocalScheduler update {}'.format(self._system_time.get_time(), str(update))
+        self._pylogger.debug('LocalScheduler update {}'.format(str(update)))
         if isinstance(update, ObjectReadyUpdate):
             self._scheduler_db.object_ready(update.object_description, update.submitting_node_id)
         elif isinstance(update, FinishTaskUpdate):
@@ -649,6 +645,8 @@ class PassthroughLocalScheduler():
 
 class FlexiblePassthroughLocalScheduler():
     def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
+        self._pylogger = TimestampedLogger(__name__+'.FlexiblePassthroughLocalScheduler', system_time)
+
         self._system_time = system_time
         self._node_runtime = node_runtime
         self._node_id = node_runtime.node_id
@@ -659,7 +657,7 @@ class FlexiblePassthroughLocalScheduler():
         self._scheduler_db.get_local_scheduler_updates(self._node_id, lambda update: self._handle_scheduler_db_update(update))
 
     def _handle_runtime_update(self, update):
-        print '{:.6f}: LocalScheduler update {}'.format(self._system_time.get_time(), str(update))
+        self._pylogger.debug('LocalScheduler update {}'.format(str(update)))
         if isinstance(update, ObjectReadyUpdate):
             self._scheduler_db.object_ready(update.object_description, update.submitting_node_id)
         elif isinstance(update, FinishTaskUpdate):
@@ -672,6 +670,7 @@ class FlexiblePassthroughLocalScheduler():
 
 
     def _forward_to_global(self, task, scheduled_locally):
+        self._pylogger.debug('submit task to global scheduler {} - scheduled locally {}'.format(task.id(), scheduled_locally))
         self._scheduler_db.submit(task, self._node_runtime.node_id, scheduled_locally)
     
     def _filter_forward(self, task):
@@ -704,6 +703,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
     def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
         FlexiblePassthroughLocalScheduler.__init__(self, system_time, node_runtime,
                                            scheduler_db, event_loop)
+        self._pylogger = TimestampedLogger(__name__+'.ThresholdLocalScheduler', system_time)
         self._size_location_results = defaultdict(list)
         self._size_location_awaiting_results = defaultdict(set)
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
@@ -738,7 +738,8 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
             # go on processing with complete results
             # either schedule locally or send to global scheduler
             for obj_id,remote_object_size,locations_status in self._size_location_results[task_id]:
-                print "{:.6f}: threshold scheduler: remote object {} status is {} and size is {}".format(self._system_time.get_time(), obj_id, locations_status, remote_object_size)
+                self._pylogger.debug('remote object {} status is {} and size is {}'.format(
+                    obj_id, locations_status, remote_object_size))
                 for node in locations_status.keys():
                     if locations_status[node] == ObjectStatus.READY and remote_object_size:
                         ready_remote_transfer_size += remote_object_size
@@ -751,12 +752,12 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
             if ready_remote_transfer_size != 0:
                 #task_load = ready_remote_transfer_size
                 task_load = ready_remote_transfer_size * self.avg_data_transfer_cost / self._node_runtime.get_avg_task_time()
-            print "{:.6f}: threshold scheduler: task load is {}".format(self._system_time.get_time(), task_load)
+            self._pylogger.debug('task load is {}'.format(task_load))
             if float(task_load) > float(self.threshold2) :
-                print "{:.6f}: threshold scheduler: local load is medium, and task load is high. task load is {} and threshold is {}, so sending task {} to global scheduler".format(self._system_time.get_time(), task_load, self.threshold2, task.id())
+                self._pylogger.debug('local load is medium, and task load is high. task load is {} and threshold is {}, so sending task {} to global scheduler'.format(task_load, self.threshold2, task.id()))
                 self._forward_to_global(task, scheduled_locally = False)
             else:
-                print "{:.6f}: threshold scheduler: local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally".format(self._system_time.get_time(), task_load, self.threshold2, task.id())
+                self._pylogger.debug('local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally'.format(task_load, self.threshold2, task.id()))
                 self._node_runtime.send_to_dispatcher(task, 1)
                 self._forward_to_global(task, scheduled_locally = True)
             del self._size_location_results[task_id]
@@ -771,25 +772,25 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
 
         #avg_task_time = 1
         avg_task_time = self._node_runtime.get_avg_task_time()
-        print "{:.6f}: threshold scheduler: get_avg_task_time : {}".format(self._system_time.get_time(), self._node_runtime.get_avg_task_time())
+        self._pylogger.debug('get_avg_task_time : {}'.format(self._node_runtime.get_avg_task_time()))
         #self._node_runtime.get_avg_task_time() buffers that last local 20 task completion times
         dispatcher_load = self._node_runtime.get_dispatch_queue_size()
         node_efficiency_rate = self._node_runtime.get_node_eff_rate()
         #add to node_runtime the function get_node_eff_rate(). It will record a buffer in the form of list of task_start_time for the last 10 or 20 tasks (this will be a constant parameter) sent for execution on the node. The node efficiency rate will be the buffer size (whatever the constant is) divided by the (last_element-first_element) of the buffer.
         
-        print "{:.6f}: threshold scheduler: node_efficiency_rate is {}".format(self._system_time.get_time(), node_efficiency_rate)
-        print "{:.6f}: threshold scheduler: avg_task_time is {}".format(self._system_time.get_time(), avg_task_time)
-        print "{:.6f}: threshold scheduler: dispatcher_load is {}".format(self._system_time.get_time(), dispatcher_load)
+        self._pylogger.debug('node_efficiency_rate is {}'.format(node_efficiency_rate))
+        self._pylogger.debug('avg_task_time is {}'.format(avg_task_time))
+        self._pylogger.debug('dispatcher_load is {}'.format(dispatcher_load))
         local_load = 0 if (node_efficiency_rate == 0) else (((dispatcher_load+self._node_runtime.num_workers_executing) / node_efficiency_rate) / avg_task_time)
-        print "{:.6f}: threshold scheduler: local load is {}".format(self._system_time.get_time(), local_load)
+        self._pylogger.debug('local load is {}'.format(local_load))
 
         for d_object_id in task.get_phase(0).depends_on:
             if self._node_runtime.is_local(d_object_id) == ObjectStatus.READY:
                 objects_status['local_ready'] += 1
-                print "{:.6f}: threshold scheduler: object {} is ready".format(self._system_time.get_time(), d_object_id) 
+                self._pylogger.debug('object {} is ready'.format(d_object_id))
             elif self._node_runtime.is_local(d_object_id) == ObjectStatus.EXPECTED:
                 objects_status['local_expected'] += 1
-                print "{:.6f}: threshold scheduler: object {} is expected".format(self._system_time.get_time(), d_object_id)
+                self._pylogger.debug('object {} is expected'.format(d_object_id))
                 #objects_transfer_size = transfer_size + self._node_runtime.get_object_size(d_object_id)
             else:
                 remote_objects.append(d_object_id) 
@@ -797,33 +798,33 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
 
         #the trivial case
         if len(task.get_phase(0).depends_on) == objects_status['local_ready'] and self._node_runtime.free_workers() > 0:
-            print "{:.6f}: threshold scheduler: all objects ready locally and there are free workers, so scheduling task {} locally".format(self._system_time.get_time(), task.id())
+            self._pylogger.debug('all objects ready locally and there are free workers, so scheduling task {} locally'.format(task.id()))
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)
 
         #if the local scheduler has very low load, even with expected objects this still reduces to the trivial case (depending on the "low load" threshold)
         elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and (float(self.threshold1l) > float(local_load))):
-            print "{:.6f}: threshold scheduler: all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally".format(self._system_time.get_time(), local_load, self.threshold1l, task.id())
+            self._pylogger.debug('all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally'.format(local_load, self.threshold1l, task.id()))
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)
 
 
         #if the local scheduler has a very high load, it's better to send the task to the global scheduler, even without querrying about all the remote objects
         elif float(local_load) > float(self.threshold1h):
-            print "{:.6f}: threshold scheduler: local load is very high. local load is {} and threshold is {}, so sending task {} to global scheduler immidietly".format(self._system_time.get_time(), local_load, self.threshold1h, task.id())
+            self._pylogger.debug('threshold scheduler: local load is very high. local load is {} and threshold is {}, so sending task {} to global scheduler immidietly'.format(local_load, self.threshold1h, task.id()))
             self._forward_to_global(task, scheduled_locally = False)
 
         #the interesting case, where we need information about remote objects
         #elif local_load < self.threshold1h and local_load > self.threshold1l:
         else:
             if not remote_objects:
-                 print "{:.6f}: threshold scheduler: local load {} is medium, but all objects will be local, so scheduling task {} locally".format(self._system_time.get_time(), local_load, task.id())
+                 self._pylogger.debug('local load {} is medium, but all objects will be local, so scheduling task {} locally'.format(local_load, task.id()))
                  self._forward_to_global(task, scheduled_locally = False)
             #querry for remote object sizes and calculate task load
             for remote_object_id in remote_objects:
                 self._size_location_awaiting_results[task.id()].add(remote_object_id)
             for remote_object_id in remote_objects:
-                print "{:.6f}: threshold scheduler: querring for remote object size".format(self._system_time.get_time())
+                self._pylogger.debug('querring for remote object size')
                 self._node_runtime.get_object_size_locations(remote_object_id,
                     lambda object_id, size, object_locations:
                     self._size_location_result_handler(task, object_id, size, object_locations))
@@ -877,8 +878,7 @@ class BaseScheduler():
         for node_id, node in local_nodes.items():
             node_runtime, node_event_loop = node
             if node_id in self._local_schedulers:
-                print "Found multiple node runtimes with the same node ID."
-                sys.exit(-1)
+                raise RuntimeError('Found multiple node runtimes with the same node ID.')
             self._local_schedulers[node_id] = local_scheduler_cls(
                     self._system_time, node_runtime, self._scheduler_db,
                     node_event_loop, **local_scheduler_kwargs)

@@ -21,6 +21,7 @@ def usage():
           "be found in default_config.py")
     print("OR test_scheduler num_nodes num_workers_per_node "
           "object_transfer_time_cost db_message_delay scheduler input.json")
+    print("Available Schedulers: %s" %schedulers.keys())
 
 
 def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,

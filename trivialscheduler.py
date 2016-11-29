@@ -27,10 +27,11 @@ class GlobalSchedulerState():
         self.finished_objects = defaultdict(list)
         # Map of object id to object size in bytes.
         self.finished_object_sizes = {}
-        #TODO: calculate the node_id -> object_id inverse map [atumanov]
 
         # Map from task id to Task object
         self.tasks = {}
+        self.task_times = {}
+        self.finished_tasks = {}
 
         self._pending_needs = {}
         self._awaiting_completion = {}
@@ -52,20 +53,34 @@ class GlobalSchedulerState():
         def __str__(self):
             return 'NodeStatus({},{},{})'.format(self.node_id, self.num_workers, self.num_workers_executing)
 
-    def set_executing(self, task_id, node_id):
+    def _update_task_timestats(self, task_id, statestr, timestamp):
+        assert(statestr in ["started", "added", "finished"])
+
+        if timestamp is not None:
+            if task_id not in self.task_times.keys():
+                self.task_times[task_id] = {}
+            self.task_times[task_id][statestr] = timestamp
+
+    def set_executing(self, task_id, node_id, timestamp):
         node_status = self.nodes[node_id]
         node_status.inc_executing()
         if task_id in self.runnable_tasks:
             self.runnable_tasks.remove(task_id)
         self.executing_tasks[task_id] = node_id
+        self._update_task_timestats(task_id, "started", timestamp)
 
     def update(self, update, timestamp):
         print '{:.6f}: GlobalSchedulerState update {}'.format(timestamp, str(update))
         if isinstance(update, ForwardTaskUpdate):
 #            print '{} task {} submitted'.format(timestamp, update.task.id())
-            self._add_task(update.task, update.submitting_node_id, update.is_scheduled_locally)
+            self._add_task(update.task, update.submitting_node_id, update.is_scheduled_locally, timestamp)
+            self._update_task_timestats(update.task.id(), "added", timestamp)
+            # if update.task.id() not in self.task_times.keys():
+            #     self.task_times[update.task.id()] = {}
+            # self.task_times[update.task.id()]["added"] = timestamp
         elif isinstance(update, FinishTaskUpdate):
             self._finish_task(update.task_id)
+            self._update_task_timestats(update.task_id, "finished", timestamp)
         elif isinstance(update, RegisterNodeUpdate):
             self._register_node(update.node_id, update.num_workers)
         elif isinstance(update, ObjectReadyUpdate):
@@ -81,11 +96,11 @@ class GlobalSchedulerState():
             sys.exit(1)
         self.nodes[node_id] = self._NodeStatus(node_id, num_workers)
 
-    def _add_task(self, task, submitting_node_id, is_scheduled_locally):
+    def _add_task(self, task, submitting_node_id, is_scheduled_locally, timestamp):
         task_id = task.id()
         self.tasks[task_id] = task
         if is_scheduled_locally:
-            self.set_executing(task_id, submitting_node_id)
+            self.set_executing(task_id, submitting_node_id, timestamp)
         else:
             pending_needs = []
             for d_object_id in task.get_depends_on():
@@ -108,6 +123,7 @@ class GlobalSchedulerState():
         for result in self.tasks[task_id].get_results():
             object_id = result.object_id
             self._object_ready(object_id, node_id, result.size)
+        self.finished_tasks[task_id] = self.tasks[task_id]
 
     def _object_ready(self, object_id, node_id, object_size):
         self.finished_objects[object_id].append(node_id)
@@ -141,7 +157,7 @@ class BaseGlobalScheduler():
 
     def _execute_task(self, node_id, task_id):
 #        print "GS executing task {} on node {}".format(task_id, node_id)
-        self._state.set_executing(task_id, node_id)
+        self._state.set_executing(task_id, node_id, self._system_time.get_time())
         self._db.schedule(node_id, task_id)
 
     def _process_tasks(self):
@@ -377,7 +393,8 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
                 if objid in node2object[node_id]:
                     node2object_array[i].append(0) #local
                 else:
-                    node2object_array[i].append(1) #remote: TODO: change this to object size, when available
+                    object_size = self._state.finished_object_sizes[objid]
+                    node2object_array[i].append(object_size) #remote
 
         return node2object_array
 
@@ -390,8 +407,9 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         num_pending = len(self._state.pending_tasks)
         num_executing = len(self._state.executing_tasks)
         num_tasks_total = num_runnable + num_pending + num_executing
-        print "timer handler fired at time t=%s , runnable=%s pending=%s executing=%s" \
-              % (tnow, num_runnable, num_pending, num_executing)
+        num_tasks_finished = len(self._state.finished_tasks)
+        print "timer handler fired at time t=%s , runnable=%s pending=%s executing=%s finished=%s" \
+              % (tnow, num_runnable, num_pending, num_executing, num_tasks_finished)
         task_id_list = self._state.runnable_tasks[:]
 
         #apply task selection policy
@@ -420,6 +438,19 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         if num_tasks_total == 0 and not self._initializing:
             #termination condition, reached zero task count, return
             return
+
+        #adjust scheduling period based on finished tasks (if any)
+        # print "[handle_timer] finished_tasks: ", self._state.finished_tasks
+        # print "[handle_timer] task_times: ", self._state.task_times
+        if len(self._state.finished_tasks.keys()) > 0:
+            completion_times = [self._state.task_times[x]["finished"] - self._state.task_times[x]["started"] \
+                                for x in self._state.finished_tasks.keys()]
+            assert(len(completion_times) > 0)
+            # print "completion_times: ", completion_times
+
+            self._schedcycle = np.mean(completion_times)/10.0
+            # print "[ALEXEY] schedcycle=%s pending=%s executing=%s" \
+            #   % (self._schedcycle, len(self._state.pending_tasks), len(self._state.executing_tasks))
 
         #in all other cases, fire timer
         self._event_loop.add_timer(self._schedcycle,
@@ -456,7 +487,12 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
     def _handle_update(self, update):
        #just update all the state datastructures
        #wait for the timer to fire
+       #intercept TaskFinish events
+
        self._state.update(update, self._system_time.get_time())
+       # if isinstance(update, FinishTaskUpdate):
+       #     pass #set scheduling period
+
 
     def _select_node(self, task_id):
         #construct an optimization problem just for one task

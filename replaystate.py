@@ -116,6 +116,7 @@ class ObjectStoreRuntime():
         self._data_transfer_time_cost = data_transfer_time_cost
         self._db_message_delay = db_message_delay
         self._awaiting_completion = defaultdict(list)
+        self._awaiting_copy = defaultdict(list)
 
     def expect_object(self, object_id, node_id):
         if node_id not in self._object_locations[object_id] or self._object_locations[object_id][node_id] != ObjectStatus.READY:
@@ -176,9 +177,6 @@ class ObjectStoreRuntime():
 #            print "require has locally"
             on_done()
         else:
-            # TODO - I don't think we are properly handling the case where the object completes on a remote
-            # node and then we have to copy it over locally.
-#            print "require doesn't have locally"
             if not object_ready_locations:
                 self._awaiting_completion[object_id].append((node_id, on_done))
             else:
@@ -189,19 +187,26 @@ class ObjectStoreRuntime():
     def _copy_object(self, object_id, dst_node_id, src_node_id, on_done):
         if dst_node_id == src_node_id:
             on_done()
-        elif src_node_id in self._object_locations[object_id].keys() and self._object_locations[object_id][src_node_id] == ObjectStatus.READY:
-            object_size = self._object_sizes[object_id]
-            data_transfer_time = object_size * self._data_transfer_time_cost
-            self._logger.object_transfer_started(object_id, object_size, src_node_id, dst_node_id)
-            self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_moved(object_id, object_size, src_node_id, dst_node_id, on_done))
         else:
-            raise RuntimeError('Unexpected failure to copy object {} to {} from {}'.format(object_id, dst_node_id, src_node_id))
+            if (object_id, dst_node_id) in self._awaiting_copy.keys():
+                self._awaiting_copy[(object_id, dst_node_id)].append(on_done)
+            elif src_node_id in self._object_locations[object_id].keys() and self._object_locations[object_id][src_node_id] == ObjectStatus.READY:
+                object_size = self._object_sizes[object_id]
+                data_transfer_time = object_size * self._data_transfer_time_cost
+                self._logger.object_transfer_started(object_id, object_size, src_node_id, dst_node_id)
+                self._awaiting_copy[(object_id, dst_node_id)].append(on_done)
+                self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_copied(object_id, object_size, src_node_id, dst_node_id))
+            else:
+                raise RuntimeError('Unexpected failure to copy object {} to {} from {}'.format(object_id, dst_node_id, src_node_id))
 
-    def _object_moved(self, object_id, object_size, src_node_id, dst_node_id, on_done):
+    def _object_copied(self, object_id, object_size, src_node_id, dst_node_id):
         self._object_locations[object_id][dst_node_id] = ObjectStatus.READY
         self._logger.object_transfer_finished(object_id, object_size, src_node_id, dst_node_id)
         self._yield_object_ready_update(object_id, dst_node_id, self._object_sizes[object_id])
-        on_done()
+        on_done_fns = self._awaiting_copy[(object_id, dst_node_id)]
+        del self._awaiting_copy[(object_id, dst_node_id)]
+        for on_done in on_done_fns:
+            on_done()
 
 
 class ObjectDescription():

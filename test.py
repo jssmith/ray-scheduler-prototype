@@ -516,14 +516,14 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self.last_ready = defaultdict(list)
         self.size_locations = {}
 
-    def _fn_ready(self, object_id, node_id):
-        self.last_ready[(object_id, node_id)].append(self.event_simulation.get_time())
+    def _fn_ready(self, object_id, node_id, extra_data):
+        self.last_ready[(object_id, node_id, extra_data)].append(self.event_simulation.get_time())
 
-    def _require_object(self, object_id, node_id):
-        self.os.require_object(object_id, node_id, lambda: self._fn_ready(object_id, node_id))
+    def _require_object(self, object_id, node_id, extra_data = None):
+        self.os.require_object(object_id, node_id, lambda: self._fn_ready(object_id, node_id, extra_data))
 
-    def _last_ready(self, object_id, node_id):
-        return self.last_ready[(object_id, node_id)]
+    def _last_ready(self, object_id, node_id, extra_data = None):
+        return self.last_ready[(object_id, node_id, extra_data)]
 
     def _retrieve_sizes_locations(self, object_id):
         self.os.get_object_size_locations(object_id, lambda object_id, object_size, object_locations: self._location_handler(object_id, object_size, object_locations))
@@ -544,7 +544,7 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self._retrieve_sizes_locations('1')
         self.assertEqual((100, {0: schedulerbase.ObjectStatus.READY}), self.size_locations['1'])
 
-    def test_moved_object(self):
+    def test_copied_object(self):
         self.assertEquals(0, self.event_simulation.get_time())
         self._add_object('1', 0, 200)
         self._retrieve_sizes_locations('1')
@@ -560,6 +560,24 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self.event_simulation.advance()
         self.assertEquals([0.2], self._last_ready('1', 1))
 
+    def test_concurrent_copies(self):
+        self.assertEquals(0, self.event_simulation.get_time())
+        self._add_object('1', 0, 200)
+        self._retrieve_sizes_locations('1')
+        self.assertEqual((200, {0: schedulerbase.ObjectStatus.READY}), self.size_locations['1'])
+
+        self.assertEqual(schedulerbase.ObjectStatus.UNKNOWN, self.os.is_local('1', 1))
+
+        self._require_object('1', 0)
+        self.event_simulation.advance()
+        self.assertEquals([0], self._last_ready('1', 0))
+
+        self._require_object('1', 1, 'A')
+        self.event_simulation.schedule_delayed(0.1, lambda: self._require_object('1', 1, 'B'))
+        self.event_simulation.advance_fully()
+        self.assertEquals([0.2], self._last_ready('1', 1, 'A'))
+        self.assertEquals([0.2], self._last_ready('1', 1, 'B'))
+
     def test_delayed_object(self):
         self.assertEquals(0, self.event_simulation.get_time())
 
@@ -570,23 +588,50 @@ class TestObjectStoreRuntime(unittest.TestCase):
         self.event_simulation.advance()
         self.assertEquals([0], self._last_ready('1', 0))
 
-        self._require_object('2', 1)
-        self._require_object('2', 0)
-        self._require_object('1', 1)
+        self._require_object('2', 1, 'A')
+        self._require_object('2', 0, 'B')
+        self._require_object('1', 1, 'C')
 
         self.event_simulation.advance()
 
-        self.assertEquals([], self._last_ready('2',1))
-        self.assertEquals([], self._last_ready('2',0))
-        self.assertEquals([0.1], self._last_ready('1',1))
+        self.assertEquals([], self._last_ready('2', 1, 'A'))
+        self.assertEquals([], self._last_ready('2', 0, 'B'))
+        self.assertEquals([0.1], self._last_ready('1', 1, 'C'))
 
         self._add_object('2', 1, 300)
 
-        self.assertEquals([0.1], self._last_ready('2', 1))
+        self.event_simulation.advance_fully()
+        self.assertEquals([0.1], self._last_ready('2', 1, 'A'))
+
+        self.assertEquals([0.4], self._last_ready('2', 0, 'B'))
+
+    def test_delayed_object_copy(self):
+        self.assertEquals(0, self.event_simulation.get_time())
+
+        self._require_object('1', 0)
+        self.assertEquals([], self._last_ready('1', 0))
+
+        self._add_object('1', 0, 100)
+        self.event_simulation.advance()
+        self.assertEquals([0], self._last_ready('1', 0))
+
+        self._require_object('2', 1, 'A')
+        self._require_object('1', 1, 'C')
+
+        self.event_simulation.schedule_delayed(0.15, lambda: self._require_object('2', 0, 'B'))
+        self.event_simulation.schedule_delayed(0.2, lambda: self._add_object('2', 1, 300))
 
         self.event_simulation.advance()
 
-        self.assertEquals([0.4], self._last_ready('2', 0))
+        self.assertEquals([], self._last_ready('2', 1, 'A'))
+        self.assertEquals([], self._last_ready('2', 0, 'B'))
+
+        self.event_simulation.advance_fully()
+
+        self.assertEquals([0.1], self._last_ready('1', 1, 'C'))
+        self.assertEquals([0.2], self._last_ready('2', 1, 'A'))
+
+        self.assertEquals([0.5], self._last_ready('2', 0, 'B'))
 
 
 # TODO(swang): Some helper functions to build object additions.

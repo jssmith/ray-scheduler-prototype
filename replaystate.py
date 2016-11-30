@@ -470,7 +470,7 @@ class EventLoop():
 #              Data model for saved computations               #
 ################################################################
 class ComputationDescription():
-    def __init__(self, root_task, tasks):
+    def __init__(self, root_task, tasks, enable_verification=False):
         if root_task is None:
             if len(tasks) != 0:
                 raise ValidationError('Too many tasks are called')
@@ -480,46 +480,47 @@ class ComputationDescription():
                 return
 
         root_task_str = str(root_task)
-        # task ids must be unique
-        task_ids = map(lambda x: x.id(), tasks)
-        task_ids_set = frozenset(task_ids)
-        if len(task_ids_set) != len(task_ids):
-            raise ValidationError('Task ids must be unique')
+        if enable_verification:
+            # task ids must be unique
+            task_ids = map(lambda x: x.id(), tasks)
+            task_ids_set = frozenset(task_ids)
+            if len(task_ids_set) != len(task_ids):
+                raise ValidationError('Task ids must be unique')
 
-        # all tasks should be called exactly once
-        called_tasks = set(root_task_str)
-        for task in tasks:
-            for phase_id in range(0, task.num_phases()):
-                for task_id in map(lambda x: x.task_id, task.get_phase(phase_id).submits):
-                    if task_id in called_tasks:
-                        raise ValidationError('Duplicate call to task {}'.format(task_id))
-                    if task_id not in task_ids_set:
-                        raise ValidationError('Call to undefined task {}'.format(task_id))
-                    called_tasks.add(task_id)
-        if len(called_tasks) < len(task_ids):
-            tasks_not_called = task_ids_set.difference(called_tasks)
-            raise ValidationError('Some tasks are not called: {}'.format(str(tasks_not_called)))
-        if len(called_tasks) > len(task_ids):
-            raise ValidationError('Too many tasks are called')
+            # all tasks should be called exactly once
+            called_tasks = set(root_task_str)
+            for task in tasks:
+                for phase_id in range(0, task.num_phases()):
+                    for task_id in map(lambda x: x.task_id, task.get_phase(phase_id).submits):
+                        if task_id in called_tasks:
+                            raise ValidationError('Duplicate call to task {}'.format(task_id))
+                        if task_id not in task_ids_set:
+                            raise ValidationError('Call to undefined task {}'.format(task_id))
+                        called_tasks.add(task_id)
+            if len(called_tasks) < len(task_ids):
+                tasks_not_called = task_ids_set.difference(called_tasks)
+                raise ValidationError('Some tasks are not called: {}'.format(str(tasks_not_called)))
+            if len(called_tasks) > len(task_ids):
+                raise ValidationError('Too many tasks are called')
 
-        # no dependencies that don't get created
-        result_objects = set()
-        for task in tasks:
-            for phase_id in range(0, task.num_phases()):
-                for object_put in task.get_phase(phase_id).creates:
-                    if object_put.object_id in result_objects:
-                        raise ValidationError('Duplicate put object id {}'.format(object_put.object_id))
-                    result_objects.add(object_put.object_id)
-            for task_result in task.get_results():
-                object_id = task_result.object_id
-                if object_id in result_objects:
-                    raise ValidationError('Duplicate result object id {}'.format(object_id))
-                result_objects.add(object_id)
-        for task in tasks:
-            for phase_id in range(0, task.num_phases()):
-                for object_id in task.get_phase(phase_id).depends_on:
-                    if object_id not in result_objects:
-                        raise ValidationError('Dependency on missing object id {}'.format(object_id))
+            # no dependencies that don't get created
+            result_objects = set()
+            for task in tasks:
+                for phase_id in range(0, task.num_phases()):
+                    for object_put in task.get_phase(phase_id).creates:
+                        if object_put.object_id in result_objects:
+                            raise ValidationError('Duplicate put object id {}'.format(object_put.object_id))
+                        result_objects.add(object_put.object_id)
+                for task_result in task.get_results():
+                    object_id = task_result.object_id
+                    if object_id in result_objects:
+                        raise ValidationError('Duplicate result object id {}'.format(object_id))
+                    result_objects.add(object_id)
+            for task in tasks:
+                for phase_id in range(0, task.num_phases()):
+                    for object_id in task.get_phase(phase_id).depends_on:
+                        if object_id not in result_objects:
+                            raise ValidationError('Dependency on missing object id {}'.format(object_id))
 
         # no cycles, everything reachable from roots
         validation_dg = DirectedGraph()
@@ -530,38 +531,39 @@ class ComputationDescription():
         total_objects_size = 0
         for task in tasks:
             tasks_map[task.id()] = task
-        for task in tasks:
-            prev_phase = None
-            for phase_id in range(0, task.num_phases()):
-                phase = task.get_phase(phase_id)
-                if prev_phase:
-                    #print "EDGE: previous phase edge"
-                    validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(phase))
-                    load_dg.add_edge(prev_phase, phase)
-                for object_id in phase.depends_on:
-                    #print "EDGE: phase dependency edge"
-                    validation_dg.add_edge(validation_dg.get_id(object_id), validation_dg.get_id(phase))
-                    load_dg.add_edge(object_id, phase)
-                for submits in phase.submits:
-                    #print "EDGE: phase schedules edge"
-                    validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(tasks_map[submits.task_id].get_phase(0)))
-                    load_dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
-                for creates in phase.creates:
-                    #print "EDGE: phase creates object"
-                    validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(creates.object_id))
-                    load_dg.add_edge(phase, creates.object_id)
-                    total_num_objects += 1
-                    total_objects_size += creates.size
+        if enable_verification:
+            for task in tasks:
+                prev_phase = None
+                for phase_id in range(0, task.num_phases()):
+                    phase = task.get_phase(phase_id)
+                    if prev_phase:
+                        #print "EDGE: previous phase edge"
+                        validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(phase))
+                        load_dg.add_edge(prev_phase, phase)
+                    for object_id in phase.depends_on:
+                        #print "EDGE: phase dependency edge"
+                        validation_dg.add_edge(validation_dg.get_id(object_id), validation_dg.get_id(phase))
+                        load_dg.add_edge(object_id, phase)
+                    for submits in phase.submits:
+                        #print "EDGE: phase schedules edge"
+                        validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(tasks_map[submits.task_id].get_phase(0)))
+                        load_dg.add_edge(phase, tasks_map[submits.task_id].get_phase(0))
+                    for creates in phase.creates:
+                        #print "EDGE: phase creates object"
+                        validation_dg.add_edge(validation_dg.get_id(phase), validation_dg.get_id(creates.object_id))
+                        load_dg.add_edge(phase, creates.object_id)
+                        total_num_objects += 1
+                        total_objects_size += creates.size
 
-                prev_phase = phase
-            for task_result in task.get_results():
-                #print "EDGE: task result edge"
-                validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(task_result.object_id))
-                load_dg.add_edge(prev_phase, task_result.object_id)
-                total_num_objects += 1
-                total_objects_size += task_result.size
-            total_num_tasks += 1
-        validation_dg.verify_dag_root(validation_dg.get_id(tasks_map[root_task_str].get_phase(0)))
+                    prev_phase = phase
+                for task_result in task.get_results():
+                    #print "EDGE: task result edge"
+                    validation_dg.add_edge(validation_dg.get_id(prev_phase), validation_dg.get_id(task_result.object_id))
+                    load_dg.add_edge(prev_phase, task_result.object_id)
+                    total_num_objects += 1
+                    total_objects_size += task_result.size
+                total_num_tasks += 1
+            validation_dg.verify_dag_root(validation_dg.get_id(tasks_map[root_task_str].get_phase(0)))
 
 
         # verification passed so initialize

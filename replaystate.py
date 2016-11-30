@@ -192,7 +192,7 @@ class ObjectStoreRuntime():
                 self._awaiting_copy[(object_id, dst_node_id)].append(on_done)
             elif src_node_id in self._object_locations[object_id].keys() and self._object_locations[object_id][src_node_id] == ObjectStatus.READY:
                 object_size = self._object_sizes[object_id]
-                data_transfer_time = object_size * self._data_transfer_time_cost
+                data_transfer_time = self._db_message_delay + object_size * self._data_transfer_time_cost
                 self._logger.object_transfer_started(object_id, object_size, src_node_id, dst_node_id)
                 self._awaiting_copy[(object_id, dst_node_id)].append(on_done)
                 self._event_simulation.schedule_delayed(data_transfer_time, lambda: self._object_copied(object_id, object_size, src_node_id, dst_node_id))

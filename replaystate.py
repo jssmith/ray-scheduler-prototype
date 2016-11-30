@@ -653,7 +653,7 @@ class Task():
             raise ValidationError('Task: no phases')
         for idx, phase in enumerate(phases):
             if phase.phase_id != idx:
-                raise ValidationError('Task: mismatched phase id')
+                raise ValidationError('Task: mismatched phase id for task {}, got {}, expected {}'.format(task_id_str, phase.phase_id, idx))
         # TODO(swang): These lines are not a valid check for the driver
         # task.
         #if not len(results):
@@ -767,31 +767,26 @@ class DirectedGraph():
         #  1/ we have a DAG
         #  2/ all nodes reachable from the root
         # we do this by depth-first search
-        visited = [False] * self._id_ct
-        in_chain = [False] * self._id_ct
+        # Map from source node ID to list of destination node IDs.
         edge_lists = dict(map(lambda (src_id, edges): (src_id, map(lambda x: x[1], edges)), itertools.groupby(self._edges, lambda x: x[0])))
 
-        #print 'root: {}'.format(root_id)
-        #print edge_lists
-
-        to_visit = [(root_id, 0)]
+        to_visit = [(root_id, ())]
+        visited = set()
         while to_visit:
-            (x, index) = to_visit.pop()
-            if index == 0:
-                if in_chain[x]:
-                    raise ValidationError('Cyclic dependencies')
-                if not visited[x]:
-                    visited[x] = True
-            if x in edge_lists.keys():
-                if index == 0:
-                    in_chain[x] = True
-                if index < len(edge_lists[x]):
-                    y = edge_lists[x][index]
-                    to_visit.append((x, index + 1))
-                    to_visit.append((y, 0))
-                else:
-                    in_chain[x] = False
-        if False in visited:
+            node, chain = to_visit.pop()
+            if node in set(chain):
+                raise ValidationError('Cyclic dependencies')
+            if node in visited:
+                continue
+            visited.add(node)
+            # Add ourselves to this DFS branch.
+            chain = chain + (node, )
+            if node not in edge_lists:
+                continue
+            for destination_node in edge_lists[node]:
+                to_visit.append((destination_node, chain))
+
+        if len(visited) != self._id_ct:
             raise ValidationError('Reachability from root')
 
 

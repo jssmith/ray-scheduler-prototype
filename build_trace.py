@@ -118,6 +118,7 @@ def build_tasks(task_dependencies, event_log, task_roots):
                 'duration': event['time'] - cur_time,
                 'creates': creates,
                 })
+            break
         else:
             print "Found unexpected event type {0}".format(event_type)
             sys.exit(-1)

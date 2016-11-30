@@ -12,10 +12,10 @@ max_num_node_range=10
 min_num_worker_range=2
 max_num_worker_range=5
 
-db_delay=0.0005
-
+# Proportionate to number of tasks.
 min_task_factor_range=1
 max_task_factor_range=10
+# Proportionate to object size, approximately.
 min_scale_factor_range=1
 max_scale_factor_range=5
 
@@ -111,32 +111,34 @@ mkdir -p $dot/traces/sweep/
 
 #***************internal simulator sweep**********************************
 
+# The following constants are fixed according to EC2's m4.2xlarge.
+# 1 gigabit/node network bandwidth.
+dtc_log=-8
+# 4 physical cores.
+w=4
+# 1ms database message delay.
+db_delay=0.001
+
 for filename in $dot/traces/sweep/*.json; do
        workload_name=`echo $filename | cut -d_ -f2`
        t=`echo $filename | cut -d_ -f3`
        s=`echo $filename | cut -d_ -f4 | cut -d. -f1`
-       for sched in ${SCHEDULERS[@]}
+       for n in `seq $min_num_node_range $max_num_node_range` #number of nodes
        do
-          for n in `seq $min_num_node_range $max_num_node_range` #number of nodes
-          do
-             for w in `seq $min_num_worker_range $max_num_worker_range` #number of workers per node
-             do
-                for dtc_log in `seq -7 0` #data transfer cost as powers of 10: 0.00001, 0.0001, 0.001, 0.01, 0.1 etc.
-                do
-                   dtc=$(awk "BEGIN{print 10 ^ $dtc_log}")
-                   echo running ray-scheduler-prototype on $filename trace with $sched scheduling policy, $n nodes, $w workers per node, $dtc data transfer cost, and $db_delay db delay
-                   sim_result=`python replaytrace.py $n $w $dtc $db_delay $sched $filename 2>&1 | tail -n1`
-                   sim_time_result=`echo $sim_result | cut -d: -f1`
-                   total_tasks_num=`echo $sim_result | cut -d: -f2`
-                   total_task_durations=`echo $sim_result | cut -d: -f3`
-                   total_num_objects=`echo $sim_result | cut -d: -f4`
-                   total_object_sizes=`echo $sim_result | cut -d: -f5`
-                   norm_critical_path=`echo $sim_result | cut -d: -f6`
-                   echo $workload_name, $t, $s, $total_tasks_num, $total_task_durations, $total_num_objects, $total_object_sizes, $norm_critical_path, $n, $w, $(( $n*$w )), $dtc, $sched, $sim_time_result | paste -sd ',' >> $sim_sweep_v_output_file 
-                   echo $workload_name, $total_tasks_num, $total_task_durations, $total_num_objects, $total_object_sizes, $norm_critical_path, $n, $w, $dtc, $sched, $sim_time_result | paste -sd ',' >> $sim_sweep_output_file 
-                done
-             done
-          done
+         for sched in ${SCHEDULERS[@]}
+         do
+            dtc=$(awk "BEGIN{print 10 ^ $dtc_log}")
+            echo running ray-scheduler-prototype on $filename trace with $sched scheduling policy, $n nodes, $w workers per node, $dtc data transfer cost, and $db_delay db delay
+            sim_result=`python replaytrace.py $n $w $dtc $db_delay $sched $filename 2>&1 | tail -n1`
+            sim_time_result=`echo $sim_result | cut -d: -f1`
+            total_tasks_num=`echo $sim_result | cut -d: -f2`
+            total_task_durations=`echo $sim_result | cut -d: -f3`
+            total_num_objects=`echo $sim_result | cut -d: -f4`
+            total_object_sizes=`echo $sim_result | cut -d: -f5`
+            norm_critical_path=`echo $sim_result | cut -d: -f6`
+            echo $workload_name, $t, $s, $total_tasks_num, $total_task_durations, $total_num_objects, $total_object_sizes, $norm_critical_path, $n, $w, $(( $n*$w )), $dtc, $sched, $sim_time_result | paste -sd ',' >> $sim_sweep_v_output_file
+            echo $workload_name, $total_tasks_num, $total_task_durations, $total_num_objects, $total_object_sizes, $norm_critical_path, $n, $w, $dtc, $sched, $sim_time_result | paste -sd ',' >> $sim_sweep_output_file
+         done
        done
 done
 

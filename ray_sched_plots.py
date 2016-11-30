@@ -38,12 +38,13 @@ def drawplots(args):
     #production graph: compare job completion time of different schedulers for rl-pong workloads data transfer cost 0.1 (2d plot: time vs. num_nodes)
     #production graph: compare job completion time of different schedulers for alexnet workloads data transfer cost 0.1 (2d plot: time vs. num_nodes)
 
-    fig5_scatter = plt.figure()
-    fig5_cont = plt.figure()
+    fig5_scatter = plt.figure(figsize=(16,8), dpi=100)
+
+#    fig5_cont = plt.figure()
     fig5sp_scatter = {}
-    fig5sp_cont = {}
+#    fig5sp_cont = {}
     fig5_scatter.suptitle('Job Completion Time for Workloads of size 200 Tasks')
-    fig5_cont.suptitle('Job Completion Time for Workloads of size 200 Tasks')
+#    fig5_cont.suptitle('Job Completion Time for Workloads of size 200 Tasks')
 
 
 
@@ -52,7 +53,7 @@ def drawplots(args):
     fig5sp_width = len(workload_types) / fig5sp_height + len(workload_types)%fig5sp_height
     for wload_ind in range(len(workload_types)):
         fig5sp_scatter[wload_ind] = fig5_scatter.add_subplot(fig5sp_height,fig5sp_width,wload_ind+1)
-        fig5sp_cont[wload_ind] = fig5_cont.add_subplot(fig5sp_height,fig5sp_width,wload_ind+1)
+#        fig5sp_cont[wload_ind] = fig5_cont.add_subplot(fig5sp_height,fig5sp_width,wload_ind+1)
         for sched in scheduler_types:
             color = colors.next()
             fig5data = sim_sweep_csv[np.logical_and(
@@ -64,7 +65,7 @@ def drawplots(args):
 
             fig5sp_scatter[wload_ind].scatter(fig5data_reduced[:,0], fig5data_reduced[:,1],c=color, marker=markers.next(), label=sched)
 
-            fig5sp_cont[wload_ind].plot(fig5data_reduced[:,0], fig5data_reduced[:,1],c=color, label=sched)
+#            fig5sp_cont[wload_ind].plot(fig5data_reduced[:,0], fig5data_reduced[:,1],c=color, label=sched)
 
 
         fig5sp_scatter[wload_ind].set_xlabel('Number of Nodes [a.u]')
@@ -73,16 +74,17 @@ def drawplots(args):
         if wload_ind==0 :
             fig5sp_scatter[wload_ind].legend(shadow=True, fancybox=True)
 
-        fig5sp_cont[wload_ind].set_xlabel('Number of Nodes [a.u]')
-        fig5sp_cont[wload_ind].set_ylabel('Job Completion Time [seconds]')
-        fig5sp_cont[wload_ind].set_title('Job Completion Time vs. Number of Nodes: {} Workload'.format(workload_types[wload_ind]))
-        if wload_ind==0 :
-            fig5sp_cont[wload_ind].legend(shadow=True, fancybox=True)
+#        fig5sp_cont[wload_ind].set_xlabel('Number of Nodes [a.u]')
+#        fig5sp_cont[wload_ind].set_ylabel('Job Completion Time [seconds]')
+#        fig5sp_cont[wload_ind].set_title('Job Completion Time vs. Number of Nodes: {} Workload'.format(workload_types[wload_ind]))
+#        if wload_ind==0 :
+#            fig5sp_cont[wload_ind].legend(shadow=True, fancybox=True)
 
 
 
-
-    plt.show()
+    fig5_scatter.savefig('fig5-scatter.pdf')
+    #fig5_cont.savefig('fig5-cont.pdf')
+    #plt.show()
 
 
 if __name__ == '__main__':

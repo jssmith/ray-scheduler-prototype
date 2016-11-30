@@ -1,24 +1,33 @@
 #!/bin/bash
 
-trace_file="trace_rnn_t3_s2.json"
+trace_file="trace_mat-mult_t3_s4.json"
 workload_name=`echo $trace_file | cut -d_ -f2`
 
 
-db_delay=0.00000005
-dtc=0.0000001
+db_delay=0.001
+dtc=0.00000001
 n=5
-w=3
+w=4
+
+#min_t1l_range=0.5
+#max_t1l_range=5
+#t1l_step=0.5
+#min_t1h_range=0
+#max_t1h_range=6
+#t1h_step=0.5
+#min_t2_range=0
+#max_t2_range=3
+#t2_step=1
 
 min_t1l_range=0
-max_t1l_range=5
-t1l_step=0.2
-min_t1h_range=0
-max_t1h_range=6
+max_t1l_range=11
+t1l_step=0.5
+min_t1h_range=1
+max_t1h_range=12
 t1h_step=0.5
 min_t2_range=0
-max_t2_range=10
+max_t2_range=3
 t2_step=1
-
 
 #min_t1l_range=0
 #max_t1l_range=0.1
@@ -41,13 +50,13 @@ echo "workload,total_num_tasks,total_task_durations,total_num_objects,total_obje
 
 
 ##############################rnn########################################
-          for t1l in `seq $min_t1l_range $t1l_step $max_t1l_range`
+          for t2 in `seq $min_t2_range $t2_step $max_t2_range`
           do
              for t1h in `seq $min_t1h_range $t1h_step $max_t1h_range`
              do
-                for t2 in `seq $min_t2_range $t2_step $max_t2_range`
+                for t1l in `seq $min_t1l_range $t1l_step $max_t1l_range`
                 do
-                   if [ `bc<<<"$t1l < $t1h"` ] ; then
+                   if (( `echo "$t1l<=$t1h" | bc`==1 )) ; then
 		           export RAY_SCHED_THRESHOLD1L=$t1l
 		           export RAY_SCHED_THRESHOLD1H=$t1h
 		           export RAY_SCHED_THRESHOLD2=$t2
@@ -55,8 +64,8 @@ echo "workload,total_num_tasks,total_task_durations,total_num_objects,total_obje
 		           echo $RAY_SCHED_THRESHOLD1H
 		           echo $RAY_SCHED_THRESHOLD2
 		           dot="$(cd "$(dirname "$0")"; pwd)"
-		           echo running ray-scheduler-prototype on $workload_name trace with basic_threshold scheduling policy, 5 nodes, 2 workers per node, $dtc data transfer cost, and $db_delay db delay
-		           sim_result=`python replaytrace.py $n $w $dtc $db_delay basic_threshold $dot/$trace_file 2>&1 | tail -n1` 
+		           echo running ray-scheduler-prototype on $workload_name trace with basic_threshold scheduling policy, 5 nodes, 4 workers per node, $dtc data transfer cost, and $db_delay db delay
+		           sim_result=`python replaytrace.py $n $w $dtc $db_delay trivial_threshold_local false $dot/traces/sweep/$trace_file 2>&1 | tail -n1` 
 		           echo $sim_result
 		           sim_time_result=`echo $sim_result | cut -d: -f1`
 		           total_tasks_num=`echo $sim_result | cut -d: -f2`

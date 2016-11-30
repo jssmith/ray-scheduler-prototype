@@ -709,9 +709,9 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._scheduled_tasks = []
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
-        self.threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 3)
-        self.threshold1h = os.getenv('RAY_SCHED_THRESHOLD1H', 6)
-        self.threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 200)
+        self.threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 2)
+        self.threshold1h = os.getenv('RAY_SCHED_THRESHOLD1H', 8)
+        self.threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 5)
         #print "threshold scheduler: threshold1l is {}".format(self.threshold1l)
         #print "threshold scheduler: threshold1h is {}".format(self.threshold1h)
         #print "threshold scheduler: threshold2 is {}".format(self.threshold2)
@@ -757,7 +757,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
 
                 if ready_remote_transfer_size != 0:
                     #task_load = ready_remote_transfer_size
-                    task_load = ready_remote_transfer_size * self.avg_data_transfer_cost if self._node_runtime.get_avg_task_time()==0 else ready_remote_transfer_size * self.avg_data_transfer_cost / self._node_runtime.get_avg_task_time()
+                    task_load = ready_remote_transfer_size * self.avg_data_transfer_cost if self.avg_message_db_delay==0 else ready_remote_transfer_size * self.avg_data_transfer_cost / self.avg_message_db_delay
                 self._pylogger.debug('task load is {}'.format(task_load))
              
                 if float(task_load) > float(self.threshold2) :

@@ -706,15 +706,17 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._pylogger = TimestampedLogger(__name__+'.ThresholdLocalScheduler', system_time)
         self._size_location_results = defaultdict(list)
         self._size_location_awaiting_results = defaultdict(set)
+        self._scheduled_tasks = []
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
-        self.threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 0.05)
-        self.threshold1h = os.getenv('RAY_SCHED_THRESHOLD1H', 0.5)
+        self.threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 3)
+        self.threshold1h = os.getenv('RAY_SCHED_THRESHOLD1H', 6)
         self.threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 200)
         #print "threshold scheduler: threshold1l is {}".format(self.threshold1l)
         #print "threshold scheduler: threshold1h is {}".format(self.threshold1h)
         #print "threshold scheduler: threshold2 is {}".format(self.threshold2)
-        self.avg_data_transfer_cost = os.getenv('AVG_DTC', 0.0000001)
+        self.avg_data_transfer_cost = os.getenv('AVG_DTC', 0.00000001)
+        self.avg_message_db_delay = os.getenv('AVG_MDBD', 0.001)
 
     def _size_location_result_handler(self, task, object_id, object_size, object_locations):
         task_id = task.id()
@@ -723,44 +725,52 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._size_location_results[task_id].append((object_id, object_size, object_locations))
         self._size_location_awaiting_results[task_id].remove(object_id)
         task_load = float('inf')
+        self._pylogger.debug('task {} scheduling recieved object information about object {} with size {} and information {}'.format(task_id, object_id, object_size, object_locations))
 
         #"short circuit" check
         for node in object_locations.keys():
-            if object_locations[node] != ObjectStatus.READY and node != self._node_id:
-                self._forward_to_global(task, scheduled_locally = False)
-                return #need to make sure I ignore the next calls of this function!
+            if object_locations[node] != ObjectStatus.READY and node != self._node_id and task_id not in self._scheduled_tasks:
+                self._scheduled_tasks.append(task_id)
+                self._pylogger.debug('local load is medium, but remote objects are not ready yet, so sending task {} to global scheduler'.format(task_id))
+                self._forward_to_global(task, scheduled_locally = False) 
+                ##need to make sure I ignore the next calls of this function!
 
 
         if not self._size_location_awaiting_results[task_id]:
             # have received all handler callbacks for this task
-            del self._size_location_awaiting_results[task_id]
-
-            # go on processing with complete results
-            # either schedule locally or send to global scheduler
-            for obj_id,remote_object_size,locations_status in self._size_location_results[task_id]:
-                self._pylogger.debug('remote object {} status is {} and size is {}'.format(
-                    obj_id, locations_status, remote_object_size))
-                for node in locations_status.keys():
-                    if locations_status[node] == ObjectStatus.READY and remote_object_size:
-                        ready_remote_transfer_size += remote_object_size
-                    elif remote_object_size:
-                        expected_remote_transfer_size += remote_object_size
             
-            if expected_remote_transfer_size>0:
-                pass #was handles in the "short circuit" case at the beginning of the function  
+            del self._size_location_awaiting_results[task_id]
+            if task_id not in self._scheduled_tasks:
+                # go on processing with complete results
+                # either schedule locally or send to global scheduler
+                for obj_id,remote_object_size,locations_status in self._size_location_results[task_id]:
+                    self._pylogger.debug('remote object {} status is {} and size is {}'.format(
+                        obj_id, locations_status, remote_object_size))
+                    for node in locations_status.keys():
+                        if locations_status[node] == ObjectStatus.READY and remote_object_size:
+                            ready_remote_transfer_size += remote_object_size
+                        elif remote_object_size:
+                            expected_remote_transfer_size += remote_object_size
+            
+                if expected_remote_transfer_size>0:
+                    pass #was handles in the "short circuit" case at the beginning of the function  
 
-            if ready_remote_transfer_size != 0:
-                #task_load = ready_remote_transfer_size
-                task_load = ready_remote_transfer_size * self.avg_data_transfer_cost / self._node_runtime.get_avg_task_time()
-            self._pylogger.debug('task load is {}'.format(task_load))
-            if float(task_load) > float(self.threshold2) :
-                self._pylogger.debug('local load is medium, and task load is high. task load is {} and threshold is {}, so sending task {} to global scheduler'.format(task_load, self.threshold2, task.id()))
-                self._forward_to_global(task, scheduled_locally = False)
-            else:
-                self._pylogger.debug('local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally'.format(task_load, self.threshold2, task.id()))
-                self._node_runtime.send_to_dispatcher(task, 1)
-                self._forward_to_global(task, scheduled_locally = True)
+                if ready_remote_transfer_size != 0:
+                    #task_load = ready_remote_transfer_size
+                    task_load = ready_remote_transfer_size * self.avg_data_transfer_cost if self._node_runtime.get_avg_task_time()==0 else ready_remote_transfer_size * self.avg_data_transfer_cost / self._node_runtime.get_avg_task_time()
+                self._pylogger.debug('task load is {}'.format(task_load))
+             
+                if float(task_load) > float(self.threshold2) :
+                    self._pylogger.debug('local load is medium, and task load is high. task load is {} and threshold is {}, so sending task {} to global scheduler'.format(task_load, self.threshold2, task.id()))
+                    self._forward_to_global(task, scheduled_locally = False)
+                    self._scheduled_tasks.append(task_id)
+                else:
+                    self._pylogger.debug('local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally'.format(task_load, self.threshold2, task.id()))
+                    self._node_runtime.send_to_dispatcher(task, 1)
+                    self._forward_to_global(task, scheduled_locally = True)
+                    self._scheduled_tasks.append(task_id)
             del self._size_location_results[task_id]
+            self._scheduled_tasks.remove(task_id)
 
 
     def _filter_forward(self, task):

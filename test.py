@@ -124,7 +124,9 @@ class TestInvalidTrace(unittest.TestCase):
         with self.assertRaises(ValidationError):
             try:
                 f = open(input_fn, 'r')
-                return json.load(f, object_hook=computation_decoder)
+                computation = json.load(f, object_hook=computation_decoder)
+                computation.verify()
+                return
             finally:
                 f.close()
 

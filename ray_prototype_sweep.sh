@@ -129,7 +129,7 @@ for filename in $dot/traces/sweep/*.json; do
          do
             dtc=$(awk "BEGIN{print 10 ^ $dtc_log}")
             echo running ray-scheduler-prototype on $filename trace with $sched scheduling policy, $n nodes, $w workers per node, $dtc data transfer cost, and $db_delay db delay
-            sim_result=`python replaytrace.py $n $w $dtc $db_delay $sched $filename 2>&1 | tail -n1`
+            sim_result=`python replaytrace.py $n $w $dtc $db_delay $sched false $filename 2>&1 | tail -n1`
             sim_time_result=`echo $sim_result | cut -d: -f1`
             total_tasks_num=`echo $sim_result | cut -d: -f2`
             total_task_durations=`echo $sim_result | cut -d: -f3`

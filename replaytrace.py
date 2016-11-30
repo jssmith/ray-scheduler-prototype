@@ -25,13 +25,15 @@ def usage():
     print("Usage: python replaytrace.py <config filename>; example config can "
           "be found in default_config.py")
     print("OR test_scheduler num_nodes num_workers_per_node "
-          "object_transfer_time_cost db_message_delay scheduler input.json")
+          "object_transfer_time_cost db_message_delay scheduler "
+          "enable_verification=<true|false> input.json")
     print("Available Schedulers: %s" %schedulers.keys())
 
 
 def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
              num_workers_per_node, object_transfer_time_cost, db_message_delay,
-             global_scheduler_kwargs=None, local_scheduler_kwargs=None):
+             global_scheduler_kwargs=None, local_scheduler_kwargs=None,
+             enable_analysis=False):
     if global_scheduler_kwargs is None:
         global_scheduler_kwargs = {}
     if local_scheduler_kwargs is None:
@@ -60,27 +62,34 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
     num_workers_executing = 0
     for node_id, local_runtime in local_runtimes.items():
         num_workers_executing += local_runtime.num_workers_executing
+    if enable_analysis:
+        total_num_tasks, normalized_critical_path, total_tasks_durations, total_num_objects, total_objects_size = computation.analyze()
+    else:
+        total_num_tasks, normalized_critical_path, total_tasks_durations, total_num_objects, total_objects_size = [-1] * 5
     if num_workers_executing > 0:
         pylogger = TimestampedLogger(__name__+'.simulate', event_simulation)
         pylogger.debug("failed to execute fully".format(num_workers_executing))
-        print "{:.6f}: Simulation Error. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
-        print "-1: {} : {} : {} : {} : {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
+        print "{:.6f}: Simulation Error. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(event_simulation.get_time(), total_num_tasks, normalized_critical_path, total_tasks_durations)
+        print "-1: {} : {} : {} : {} : {}".format(event_simulation.get_time(), total_num_tasks, total_tasks_durations, total_num_objects, total_objects_size, normalized_critical_path)
         return False
     else:
         logger.job_ended()
-        print "{:.6f}: Simulation finished successfully. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.normalized_critical_path, computation.total_tasks_durations)
-        print "{:.6f}: {} : {} : {} : {} : {}".format(event_simulation.get_time(), computation.total_num_tasks, computation.total_tasks_durations, computation.total_num_objects, computation.total_objects_size, computation.normalized_critical_path)
+        print "{:.6f}: Simulation finished successfully. Total Number of Tasks: {}, DAG Normalized Critical Path: {}, Total Tasks Durations: {}".format(event_simulation.get_time(), total_num_tasks, normalized_critical_path, total_tasks_durations)
+        print "{:.6f}: {} : {} : {} : {} : {}".format(event_simulation.get_time(), total_num_tasks, total_tasks_durations, total_num_objects, total_objects_size, normalized_critical_path)
         return True
 
 def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
                db_message_delay, scheduler_name, trace_filename,
-               global_scheduler_kwargs, local_scheduler_kwargs):
+               global_scheduler_kwargs, local_scheduler_kwargs,
+               enable_verification=True):
     scheduler_cls = schedulers.get(scheduler_name)
     if scheduler_cls is None:
         print 'Error - unrecognized scheduler'
         sys.exit(1)
     f = open(trace_filename, 'r')
     computation = json.load(f, object_hook=replaystate.computation_decoder)
+    if enable_verification:
+        computation.verify()
     f.close()
 
     setup_logging()
@@ -96,9 +105,11 @@ def run_replay_from_sys_argv(args):
     object_transfer_time_cost = float(args[3])
     db_message_delay = float(args[4])
     scheduler_name = args[5]
-    trace_filename = args[6]
+    enable_verification = args[6] == 'true'
+    trace_filename = args[7]
     run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
-               db_message_delay, scheduler_name, trace_filename, {}, {})
+               db_message_delay, scheduler_name, trace_filename, {}, {},
+               enable_verification=enable_verification)
 
 def run_replay_from_config(config_filename):
     import default_config
@@ -119,14 +130,17 @@ def run_replay_from_config(config_filename):
                                      default_config.LOCAL_SCHEDULER_KWARGS)
     trace_filename = getattr(config, 'TRACE_FILENAME',
                              default_config.TRACE_FILENAME)
+    enable_verification = getattr(config, 'ENABLE_VERIFICATION',
+            default_config.ENABLE_VERIFICATION)
     run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
                db_message_delay, scheduler_name, trace_filename,
-               global_scheduler_kwargs, local_scheduler_kwargs)
+               global_scheduler_kwargs, local_scheduler_kwargs,
+               enable_verification=enable_verification)
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:
         run_replay_from_config(sys.argv[1])
-    elif len(sys.argv) == 7:
+    elif len(sys.argv) == 8:
         run_replay_from_sys_argv(sys.argv)
     else:
         usage()

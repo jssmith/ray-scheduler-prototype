@@ -10,7 +10,7 @@ from scipy.interpolate import griddata
 
 def drawplots(args):
     csv_filename = args[1]
-    sim_sweep_csv = np.genfromtxt(csv_filename, delimiter=',', skip_header=1, dtype='|S15')
+    sim_sweep_csv = np.genfromtxt(csv_filename, delimiter=',', skip_header=1, dtype='|S32')
 
     #print sim_sweep_csv
 
@@ -54,6 +54,7 @@ def drawplots(args):
         fig5sp_scatter[wload_ind] = fig5_scatter.add_subplot(fig5sp_height,fig5sp_width,wload_ind+1)
         fig5sp_cont[wload_ind] = fig5_cont.add_subplot(fig5sp_height,fig5sp_width,wload_ind+1)
         for sched in scheduler_types:
+            color = colors.next()
             fig5data = sim_sweep_csv[np.logical_and(
                                      np.logical_and(
                                      sim_sweep_csv[:,0]==workload_types[wload_ind],
@@ -61,9 +62,9 @@ def drawplots(args):
                                      sim_sweep_csv[:,10]!='-1')]
             fig5data_reduced = np.column_stack((fig5data[:,6], fig5data[:,10])).astype(np.float)
 
-            fig5sp_scatter[wload_ind].scatter(fig5data_reduced[:,0], fig5data_reduced[:,1],c=colors.next(), marker=markers.next(), label=sched)
+            fig5sp_scatter[wload_ind].scatter(fig5data_reduced[:,0], fig5data_reduced[:,1],c=color, marker=markers.next(), label=sched)
 
-            fig5sp_cont[wload_ind].plot(fig5data_reduced[:,0], fig5data_reduced[:,1],c=colors.next(), label=sched)
+            fig5sp_cont[wload_ind].plot(fig5data_reduced[:,0], fig5data_reduced[:,1],c=color, label=sched)
 
 
         fig5sp_scatter[wload_ind].set_xlabel('Number of Nodes [a.u]')

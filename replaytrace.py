@@ -1,6 +1,7 @@
 import replaystate
 from trivialscheduler import *
 import json
+import gzip
 
 import sys
 import imp
@@ -86,11 +87,16 @@ def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
     if scheduler_cls is None:
         print 'Error - unrecognized scheduler'
         sys.exit(1)
-    f = open(trace_filename, 'r')
-    computation = json.load(f, object_hook=replaystate.computation_decoder)
+    if trace_filename.endswith('.gz'):
+        f = gzip.open(trace_filename, 'rb')
+    else:
+        f = open(trace_filename, 'r')
+    try:
+      computation = json.load(f, object_hook=replaystate.computation_decoder)
+    finally:
+        f.close()
     if enable_verification:
         computation.verify()
-    f.close()
 
     setup_logging()
     event_simulation = replaystate.EventSimulation()

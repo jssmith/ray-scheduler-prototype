@@ -450,14 +450,29 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         self._event_loop.add_timer(self._schedcycle,
                                    TransferCostAwareGlobalScheduler._handle_timer, (self,))
 
-    def _apply_task_policy(self, task_id_list, workercaps=None):
-        ''' given a set of tasks and worker capacities, mutate task id list (sort, subsample, reorder)'''
 
+    def _apply_task_policy_trivial(self, task_id_list, workercaps):
+        ''' given a set of tasks and worker capacities, mutate task id list (sort, subsample, reorder)'''
+        return task_id_list[:sum(workercaps)]
+
+    def _apply_task_policy_sized(self, task_id_list, workercaps):
+        ''' given a set of tasks and worker capacities, return a list of tasks using most data'''
+        ot = []
+        for t in task_id_list:
+            total_object_size = sum([self._state.finished_object_sizes[o] for o in self._state.tasks[t].get_depends_on()])
+            ot.append((total_object_size, t))
+
+        ot.sort(key=lambda tup: tup[0], reverse=True) # high to low sort on object_size
+        return [t for o,t in ot[:sum(workercaps)]]
+
+    def _apply_task_policy(self, task_id_list, workercaps = None):
         if not workercaps:
             workercaps = self._get_worker_capacities(self._state.nodes)
-        #trivial task policy implementation
-        #note: it is possible to return an empty list of tasks (e.g., if no avail. capacity)
-        return task_id_list[:sum(workercaps)]
+        if sum(workercaps) >= len(task_id_list):
+            return task_id_list
+
+        #return self._apply_task_policy_trivial(task_id_list, workercaps)
+        return self._apply_task_policy_sized(task_id_list, workercaps)
 
     def _setup_bop(self, task_id_list):
         ''' given a set of tasks, set up everything needed to call schedule

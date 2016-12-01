@@ -43,7 +43,6 @@ def drawplots(args):
 #    fig5_cont = plt.figure()
     fig5sp_scatter = {}
 #    fig5sp_cont = {}
-    fig5_scatter.suptitle('Job Completion Time for Workloads of size 200 Tasks')
 #    fig5_cont.suptitle('Job Completion Time for Workloads of size 200 Tasks')
 
 
@@ -71,8 +70,8 @@ def drawplots(args):
         fig5sp_scatter[wload_ind].set_xlabel('Number of Nodes [a.u]')
         fig5sp_scatter[wload_ind].set_ylabel('Job Completion Time [seconds]')
         fig5sp_scatter[wload_ind].set_title('Job Completion Time vs. Number of Nodes: {} Workload'.format(workload_types[wload_ind]))
-        if wload_ind==0 :
-            fig5sp_scatter[wload_ind].legend(shadow=True, fancybox=True)
+#        if wload_ind==0 :
+        fig5sp_scatter[wload_ind].legend(shadow=True, fancybox=True)
 
 #        fig5sp_cont[wload_ind].set_xlabel('Number of Nodes [a.u]')
 #        fig5sp_cont[wload_ind].set_ylabel('Job Completion Time [seconds]')

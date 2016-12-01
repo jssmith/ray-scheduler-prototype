@@ -383,7 +383,7 @@ class NodeRuntime():
                 self._yield_update(FinishTaskUpdate(update.task_id))
                 self.num_workers_executing -= 1
                 self._task_times.append(self._event_simulation.get_time() - self._task_start_times_map.get(update.task_id, 0)) 
-                print "task_times: {}".format(self._task_times)
+                #print "task_times: {}".format(self._task_times)
                 self._event_simulation.schedule_immediate(lambda: self._process_tasks())
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))

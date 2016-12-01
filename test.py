@@ -12,7 +12,7 @@ from replaytrace import schedulers
 from replaytrace import simulate
 
 from helpers import setup_logging
-from statslogging import PrintingLogger
+from statslogging import PrintingLogger, NoopLogger
 
 class TestEventLoopTimers(unittest.TestCase):
     def setUp(self):
@@ -155,7 +155,7 @@ class TestValidTrace(unittest.TestCase):
             self.start_timestamp = float(start_timestamp)
             self.end_timestamp = float(end_timestamp)
 
-    class ValidatingLogger():
+    class ValidatingLogger(NoopLogger):
         def __init__(self, test, event_simulation, task_timing):
             self._test = test
             self._event_simulation = event_simulation
@@ -170,15 +170,6 @@ class TestValidTrace(unittest.TestCase):
         def task_finished(self, task_id, node_id):
             self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._event_simulation.get_time())
             self._timed_tasks.add(task_id)
-
-        def object_transfer_started(self, object_id, object_size, src_node_id, dst_node_id):
-            pass
-
-        def object_transfer_finished(self, object_id, object_size, src_node_id, dst_node_id):
-            pass
-
-        def job_ended(self):
-            pass
 
         def verify_all_finished(self):
             self._test.assertItemsEqual(self._task_timing.keys(), self._timed_tasks)
@@ -240,7 +231,7 @@ class TestCompletion(unittest.TestCase):
         if name == self._method_name:
             return self.runTest
 
-    class ValidatingLogger():
+    class ValidatingLogger(NoopLogger):
         def __init__(self, test, event_simulation, all_task_ids):
             self._test = test
             self._event_simulation = event_simulation
@@ -681,31 +672,12 @@ class TestNodeRuntime(unittest.TestCase):
         def expect_object(self, object_id, node_id):
             pass
 
-    class RecordingLogger():
-        def __init__(self, event_simulation):
-#            self._test = test
-            self._event_simulation = event_simulation
-            #self._task_timing = {}
-            #for t in task_timing:
-            #    self._task_timing[t.task_id] = t
-            #self._timed_tasks = set()
-
-        def task_started(self, task_id, node_id):
-            pass
-            #self._test.assertAlmostEqual(self._task_timing[task_id].start_timestamp, self._event_simulation.get_time())
-
-        def task_finished(self, task_id, node_id):
-            pass
-            #self._test.assertAlmostEqual(self._task_timing[task_id].end_timestamp, self._event_simulation.get_time())
-            #self._timed_tasks.add(task_id)
-
-
     def setUp(self):
         setup_logging()
 
         self.event_simulation = EventSimulation()
         self.object_store = self.ObjectStore(self.event_simulation, self)
-        self.logger = self.RecordingLogger(self.event_simulation)
+        self.logger = NoopLogger(self.event_simulation)
 
         self.updates = []
         self.objects_added = []

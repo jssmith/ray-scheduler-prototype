@@ -100,9 +100,10 @@ def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
 
     setup_logging()
     event_simulation = replaystate.EventSimulation()
+    printing_logger = statslogging.PrintingLogger(event_simulation)
     stats_logger = statslogging.StatsLogger(event_simulation)
     event_log_logger = statslogging.EventLogLogger(event_simulation)
-    logger = statslogging.CompoundLogger([stats_logger, event_log_logger])
+    logger = statslogging.CompoundLogger([printing_logger, stats_logger, event_log_logger])
     simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
              num_workers_per_node, object_transfer_time_cost, db_message_delay,
              global_scheduler_kwargs, local_scheduler_kwargs)

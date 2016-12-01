@@ -45,7 +45,8 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         return ReplaySchedulerDatabase.HandlerContext(self, update)
 
     def submit(self, task, submitting_node_id, is_scheduled_locally):
-        print "submit called"
+        if is_scheduled_locally:
+            self._logger.task_scheduled(task.id(), submitting_node_id, True)
         self._yield_global_scheduler_update(ForwardTaskUpdate(task, submitting_node_id, is_scheduled_locally))
 
     def finished(self, task_id):
@@ -91,6 +92,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self._event_simulation.schedule_delayed(self._db_message_delay, lambda handler=handler: handler(update))
 
     def schedule(self, node_id, task_id):
+        self._logger.task_scheduled(task_id, node_id, False)
 #        print("State DB received request to schedule task {} on node {}".format(task_id, node_id))
         # TODO: add delay in propagating to local scheduler
         self._yield_local_scheduler_update(ScheduleTaskUpdate(self._computation.get_task(task_id), node_id))
@@ -102,6 +104,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         root_task = self._computation.get_root_task()
         if root_task is not None:
             self.root_task_id = root_task.id()
+            self._logger.task_submitted(self.root_task_id, node_id)
             self._event_simulation.schedule_immediate(lambda: self.schedule(node_id, self.root_task_id))
             self._event_simulation.schedule_immediate(lambda: self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True)))
 
@@ -123,6 +126,7 @@ class ObjectStoreRuntime():
             self._object_locations[object_id][node_id] = ObjectStatus.EXPECTED
 
     def add_object(self, object_id, node_id, object_size):
+        self._logger.object_created(object_id, node_id, object_size)
         self._object_locations[object_id][node_id] = ObjectStatus.READY
         self._object_sizes[object_id] = object_size
         self._yield_object_ready_update(object_id, node_id, object_size)
@@ -334,6 +338,7 @@ class NodeRuntime():
 
     def _execute_phase_immediate(self, task_id, phase_id):
         self._pylogger.debug('executing task {} phase {}'.format(task_id, phase_id))
+        self._logger.task_phase_started(task_id, phase_id, self.node_id)
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
         for put_event in task_phase.creates:
             self._event_simulation.schedule_delayed(
@@ -367,9 +372,11 @@ class NodeRuntime():
 
     def _handle_update(self, update):
         if isinstance(update, self.TaskSubmitted):
+            self._logger.task_submitted(update.submitted_task_id, self.node_id)
             self._event_simulation.schedule_immediate(lambda: self._yield_update(SubmitTaskUpdate(self._computation.get_task(update.submitted_task_id))))
         elif isinstance(update, self.TaskPhaseComplete):
             self._pylogger.debug('completed task {} phase {}'.format(update.task_id, update.phase_id))
+            self._logger.task_phase_finished(update.task_id, update.phase_id, self.node_id)
             task = self._computation.get_task(update.task_id)
             if update.phase_id < task.num_phases() - 1:
                 self._pylogger.debug('task {} has further phases'.format(update.task_id))
@@ -379,7 +386,6 @@ class NodeRuntime():
                 self._logger.task_finished(update.task_id, self.node_id)
                 for res in task.get_results():
                     self._object_store.add_object(res. object_id, self.node_id, res.size)
-#                print "XXX finished task {} number of phases is {}".format(update.task_id, num_phases)
                 self._yield_update(FinishTaskUpdate(update.task_id))
                 self.num_workers_executing -= 1
                 self._task_times.append(self._event_simulation.get_time() - self._task_start_times_map.get(update.task_id, 0)) 

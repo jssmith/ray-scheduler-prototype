@@ -3,6 +3,9 @@ import simplejson as json
 import random
 
 from replaystate import TaskSubmit
+from replaystate import TaskPhase
+from replaystate import Task
+from replaystate import ComputationDescription
 from replaystate import computation_decoder
 
 
@@ -120,6 +123,7 @@ def merge_computation(computation1, computation2, offset,
     # new task ID.
     for task_id in computation2_task_ids:
         if task_id not in computation1_task_ids:
+            computation1_task_ids.append(task_id)
             continue
         # Task ID collision. Replace all instances of task_id in computation2
         # with a unique task ID.
@@ -133,6 +137,7 @@ def merge_computation(computation1, computation2, offset,
     # new object ID.
     for object_id in computation2_object_ids:
         if object_id not in computation1_object_ids:
+            computation1_object_ids.append(object_id)
             continue
         # Object ID collision. Replace all instances of object_id in computation2
         # with a unique object ID.
@@ -158,12 +163,23 @@ def merge_computations(computations, offsets):
     Merge a list of computations together. Returns a single dictionary
     representing the aggregate computation graph.
     """
-    computation = computations.pop(0)
-    task_ids = get_task_ids(computation)
-    object_ids = get_object_ids(computation)
+    # Create a mock computation graph that will submit all of the other
+    # computations.
+    root_task_id = "0"
+    root_phase = TaskPhase(0, [], [], sum(offsets), [])
+    computation = ComputationDescription(root_task_id, [
+        Task(root_task_id, [root_phase], []),
+        ])
+
+    # Merge the computations into the mock computation.
+    task_ids = None
+    object_ids = None
     offset = 0
     while computations:
         computation_to_merge = computations.pop(0)
+        if task_ids is None:
+            task_ids = get_task_ids(computation)
+            object_ids = get_object_ids(computation)
         offset += offsets.pop(0)
         task_ids, object_ids = merge_computation(computation,
                 computation_to_merge, offset, task_ids, object_ids)
@@ -230,7 +246,11 @@ if __name__ == '__main__':
     offset = args.offset
     output_filename = args.output_filename
 
-    offsets = [offset] * (repetitions - 1)
+    # Create the list of time offsets. The first repetition will be submitted
+    # immediately.
+    offsets = [offset] * repetitions
+    offsets[0] = 0
+    # Create the list of computation repetitions.
     computations = []
     for i in range(repetitions):
         with open(trace_filename, 'r') as f:

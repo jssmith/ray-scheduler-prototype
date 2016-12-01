@@ -1,3 +1,7 @@
+import os
+import json
+import gzip
+
 from helpers import TimestampedLogger
 
 class PrintingLogger(object):
@@ -55,7 +59,6 @@ class StatsLogger(PrintingLogger):
             del self._start_times[key]
             return elapsed_time
 
-
     def task_started(self, task_id, node_id):
         super(StatsLogger, self).task_started(task_id, node_id)
         self._num_tasks_started += 1
@@ -91,3 +94,56 @@ class StatsLogger(PrintingLogger):
         self._pylogger.info('number of objects transferred {}'.format(self._num_object_transfers_finished))
         self._pylogger.info('size of objects transferred {}'.format(self._object_transfer_size))
         self._pylogger.info('amount of time in object transfer {}'.format(self._object_transfer_time))
+
+
+class EventLogLogger():
+    def __init__(self, system_time):
+        self._system_time = system_time
+        self._event_log = []
+
+    def _add_event(self, event_name, event_data):
+        self._event_log.append({'timestamp': self._system_time.get_time(), 'event_name': event_name, 'event_data': event_data})
+
+    def task_started(self, task_id, node_id):
+        self._add_event('task_started', { 'task_id': task_id, 'node_id': node_id })
+
+    def task_finished(self, task_id, node_id):
+        self._add_event('task_finished', { 'task_id': task_id, 'node_id': node_id })
+
+    def object_transfer_started(self, object_id, object_size, src_node_id, dst_node_id):
+        self._add_event('object_transfer_started', { 'object_id': object_id, 'object_size': object_size,
+            'src_node_id': src_node_id, 'dst_node_id': dst_node_id })
+
+    def object_transfer_finished(self, object_id, object_size, src_node_id, dst_node_id):
+        self._add_event('object_transfer_finished', { 'object_id': object_id, 'object_size': object_size,
+            'src_node_id': src_node_id, 'dst_node_id': dst_node_id })
+
+    def job_ended(self):
+        if not os.path.exists('sweep'):
+            os.makedirs('sweep')
+        with gzip.open('sweep/sim_events.gz', 'wb') as f:
+            f.write(json.dumps(self._event_log))
+
+class CompoundLogger():
+    def __init__(self, loggers):
+        self._loggers = loggers
+
+    def task_started(self, task_id, node_id):
+        for logger in self._loggers:
+            logger.task_started(task_id, node_id)
+
+    def task_finished(self, task_id, node_id):
+        for logger in self._loggers:
+            logger.task_finished(task_id, node_id)
+
+    def object_transfer_started(self, object_id, object_size, src_node_id, dst_node_id):
+        for logger in self._loggers:
+            logger.object_transfer_started(object_id, object_size, src_node_id, dst_node_id)
+
+    def object_transfer_finished(self, object_id, object_size, src_node_id, dst_node_id):
+        for logger in self._loggers:
+            logger.object_transfer_finished(object_id, object_size, src_node_id, dst_node_id)
+
+    def job_ended(self):
+        for logger in self._loggers:
+            logger.job_ended()

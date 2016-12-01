@@ -14,7 +14,7 @@ max_num_worker_range=5
 
 # Proportionate to number of tasks.
 min_task_factor_range=1
-max_task_factor_range=10
+max_task_factor_range=6
 # Proportionate to object size, approximately.
 min_scale_factor_range=1
 max_scale_factor_range=5
@@ -80,7 +80,7 @@ mkdir -p $dot/traces/sweep/
 ##############################alexnet########################################
 #for t in `seq $min_task_factor_range $max_task_factor_range` #number of tasks factor (in the case of rnn this is num_steps_
 #do
-#    for s in `seq 4 8` #scale factor (object sizes)
+#    for s in `seq 1 8` #scale factor (object sizes)
 #    do
 #       rm -r /tmp/raylogs/*
 #       echo running alexnet with 1 workers $t iterations \(tasks factor\) and scale \(object size factor\) $s

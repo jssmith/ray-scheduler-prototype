@@ -338,11 +338,15 @@ class NodeRuntime():
         for put_event in task_phase.creates:
             self._event_simulation.schedule_delayed(
                     put_event.time_offset,
-                    lambda: self._object_store.add_object(put_event.object_id, self.node_id, put_event.size)
+                    lambda put_event=put_event:
+                    self._object_store.add_object(put_event.object_id,
+                        self.node_id, put_event.size)
                     )
             self._event_simulation.schedule_delayed(
                     put_event.time_offset,
-                    lambda: self._yield_update(ObjectReadyUpdate(ObjectDescription(put_event.object_id, self.node_id, put_event.size), self.node_id))
+                    lambda put_event=put_event:
+                    self._yield_update(ObjectReadyUpdate(ObjectDescription(put_event.object_id,
+                        self.node_id, put_event.size), self.node_id))
                     )
         for schedule_task in task_phase.submits:
             self._event_simulation.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
@@ -402,6 +406,7 @@ class EventSimulation():
         self._t = 0
         self._scheduled = []
         self._scheduled_seq = 0
+        self._pylogger = TimestampedLogger(__name__+'.EventSimulation', self)
 
     def get_time(self):
         return self._t
@@ -414,6 +419,8 @@ class EventSimulation():
         self._scheduled_seq += 1
 
     def schedule_delayed(self, delta, fn):
+        self._pylogger.debug('Scheduling {} {} at time {}'.format(fn,
+            fn.__name__, self._t + delta))
         self.schedule_at(self._t + delta, fn)
 
     def schedule_immediate(self, fn):
@@ -422,6 +429,8 @@ class EventSimulation():
     def advance(self):
         if len(self._scheduled) > 0:
             (self._t, _, scheduled) = heapq.heappop(self._scheduled)
+            self._pylogger.debug('Advancing to {} {} at time '
+                '{}'.format(scheduled, scheduled.__name__, self._t))
             scheduled()
         return len(self._scheduled) > 0
 

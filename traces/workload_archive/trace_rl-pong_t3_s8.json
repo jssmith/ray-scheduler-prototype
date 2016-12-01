@@ -1,0 +1,65 @@
+{
+    "rootTask": "0",
+    "tasks": [
+        {
+            "phases": [
+                {
+                    "creates": [
+                        {
+                            "objectId": 0,
+                            "size": 280,
+                            "timeOffset": 0.3294970989227295
+                        }
+                    ],
+                    "dependsOn": [],
+                    "duration": 0.38051700592041016,
+                    "phaseId": 0,
+                    "submits": [
+                        {
+                            "taskId": "3f0ac6464aed42a78ef8afd16416831f",
+                            "timeOffset": 0.3432271480560303
+                        },
+                        {
+                            "taskId": "f55056fddca74f73b91891d2f9d3f776",
+                            "timeOffset": 0.36465907096862793
+                        },
+                        {
+                            "taskId": "7e0642b2e7b841c6833cdccbdce63170",
+                            "timeOffset": 0.3692359924316406
+                        },
+                        {
+                            "taskId": "74dff908f87c488e90bd5736bf66d9b3",
+                            "timeOffset": 0.37157607078552246
+                        },
+                        {
+                            "taskId": "9e7c3ffe82584761a287df9f3e9e217b",
+                            "timeOffset": 0.37326908111572266
+                        },
+                        {
+                            "taskId": "261b5a22943a4d31ab77576f02de945c",
+                            "timeOffset": 0.37462401390075684
+                        },
+                        {
+                            "taskId": "c9733abaf8be48beaa5e02c504c815f2",
+                            "timeOffset": 0.3760490417480469
+                        },
+                        {
+                            "taskId": "aa0dc1c33d2d41f4b57a6e02c065cc18",
+                            "timeOffset": 0.3774759769439697
+                        },
+                        {
+                            "taskId": "a48ea598e4dd4f3e8ec9351415482b72",
+                            "timeOffset": 0.3788731098175049
+                        },
+                        {
+                            "taskId": "7e54a19b4cd645c58b98bf70f3e26a76",
+                            "timeOffset": 0.38030314445495605
+                        }
+                    ]
+                }
+            ],
+            "results": [],
+            "taskId": "0"
+        }
+    ]
+}

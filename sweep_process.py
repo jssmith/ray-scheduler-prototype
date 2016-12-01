@@ -68,7 +68,7 @@ def replay_trace(config):
     config_etc['stdout_fn'] = stdout_name
     config_etc['stdout_fn'] = stderr_name
     config_etc['log_fn'] = log_name
-    config_etc['gitrev'] = gitrev.get_git_rev()
+    config_etc['gitrev'] = gitrev.get_rev()
 
     return replay_id, config_etc
 
@@ -91,11 +91,11 @@ def s3_cp(src, dst):
     print 'copy from {} to {}'.format(src, dst)
     call(['aws', 's3', 'cp', src, dst])
 
-def process_sweep(sleep_time):
+def process_sweep(sleep_time, iteration_limit=None):
     conn = ec2config.sqs_connect()
     queue = conn.get_queue(ec2config.sqs_sweep_queue)
 
-    while True:
+    def do_iter():
         try:
             m = queue.read()
             if m is None:
@@ -120,6 +120,13 @@ def process_sweep(sleep_time):
             print err
         # except:
         #     print "Unexpected error", sys.exc_info()[0]
+    if iteration_limit is None:
+        while True:
+            do_iter()
+    else:
+        for _ in range(iteration_limit):
+            do_iter()
+
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:

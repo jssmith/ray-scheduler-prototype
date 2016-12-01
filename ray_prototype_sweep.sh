@@ -7,7 +7,7 @@
 
 declare -a SCHEDULERS=("trivial" "location_aware" "transfer_aware" "delay" "trivial_local" "trivial_threshold_local" "location_aware_local" "transfer_aware_local" "transfer_aware_threshold_local") 
 
-min_num_node_range=3
+min_num_node_range=1
 max_num_node_range=10
 min_num_worker_range=2
 max_num_worker_range=5

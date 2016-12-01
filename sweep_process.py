@@ -41,11 +41,10 @@ def replay_trace(config):
             local_tracefile
         ], stdout=PIPE, stderr=PIPE)
     (stdoutdata, stderrdata) = proc.communicate()
-    print stdoutdata
-    print stderrdata
+    returncode = proc.returncode
+
     stdout_name = replay_id + '_stdout.gz'
     stderr_name = replay_id + '_stderr.gz'
-
     stdout_fn = sweep_dir + '/' + stdout_name
     stderr_fn = sweep_dir + '/' + stderr_name
     write_output(stdout_fn, stdoutdata)
@@ -58,10 +57,13 @@ def replay_trace(config):
 
     end_time = time.time()
 
+    print "finished replay {} in {:.3f}".format(replay_id, end_time - start_time)
+
     config_etc = copy.copy(config)
     config_etc['hostname'] = socket.gethostname()
     config_etc['start_time'] = time.time()
     config_etc['end_time'] = time.time()
+    config_etc['returncode'] = returncode
     config_etc['stdout_fn'] = stdout_name
     config_etc['stdout_fn'] = stderr_name
     config_etc['log_fn'] = log_name

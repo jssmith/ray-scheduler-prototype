@@ -1,5 +1,6 @@
 import os
 import sys
+import gzip
 import time
 import copy
 import boto.sqs
@@ -13,6 +14,7 @@ from boto.sqs.message import Message
 from subprocess import call, Popen, PIPE
 
 def replay_trace(config):
+    start_time = time.time()
     replay_id = new_id()
     sweep_dir = 'sweep'
     print "starting replay", replay_id
@@ -37,22 +39,33 @@ def replay_trace(config):
     (stdoutdata, stderrdata) = proc.communicate()
     print stdoutdata
     print stderrdata
-    stdout_fn = sweep_dir + '/' + replay_id + '_stdout'
-    stderr_fn = sweep_dir + '/' + replay_id + '_stderr'
+    stdout_name = replay_id + '_stdout.gz'
+    stderr_name = replay_id + '_stderr.gz'
+    stdout_fn = sweep_dir + '/' + stdout_name
+    stderr_fn = sweep_dir + '/' + stderr_name
     write_output(stdout_fn, stdoutdata)
     write_output(stderr_fn, stderrdata)
 
-    s3_cp(stdout_fn, ec2config.s3_bucket + '/sweep/' + replay_id + '_stdout')
-    s3_cp(stderr_fn, ec2config.s3_bucket + '/sweep/' + replay_id + '_stderr')
-    return replay_id
+    s3_cp(stdout_fn, ec2config.s3_bucket + '/sweep/' + stdout_name)
+    s3_cp(stderr_fn, ec2config.s3_bucket + '/sweep/' + stderr_name)
+
+    end_time = time.time()
+
+    config_etc = copy.copy(config)
+    config_etc['hostname'] = socket.gethostname()
+    config_etc['start_time'] = time.time()
+    config_etc['end_time'] = time.time()
+    config_etc['stdout_fn'] = stdout_name
+    config_etc['stdout_fn'] = stderr_name
+
+    return replay_id, config_etc
 
 def new_id():
     return hashlib.sha1(str(uuid.uuid1())).hexdigest()[:8]
 
 def write_output(fn, text):
-    f = open(fn, 'w')
-    f.write(text)
-    f.close()
+    with gzip.open(fn, 'wb') as f:
+        f.write(text)
 
 def s3_sync_file(src, dst):
     if os.path.isfile(dst):
@@ -81,14 +94,8 @@ def process_sweep(sleep_time):
                 config = json.loads(m.get_body())
                 print config
 
-                start_time = time.time()
-                replay_id = replay_trace(config)
-                end_time = time.time()
+                replay_id, config_etc = replay_trace(config)
 
-                config_etc = copy.copy(config)
-                config_etc['hostname'] = socket.gethostname()
-                config_etc['start_time'] = time.time()
-                config_etc['end_time'] = time.time()
                 sdb_conn = ec2config.sdb_connect()
                 dom = sdb_conn.get_domain(ec2config.sdb_sweep_domain)
                 dom.put_attributes(replay_id, config_etc)

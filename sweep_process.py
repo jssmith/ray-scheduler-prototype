@@ -62,8 +62,8 @@ def replay_trace(config):
 
     config_etc = copy.copy(config)
     config_etc['hostname'] = socket.gethostname()
-    config_etc['start_time'] = time.time()
-    config_etc['end_time'] = time.time()
+    config_etc['start_time'] = start_time
+    config_etc['end_time'] = end_time
     config_etc['returncode'] = returncode
     config_etc['stdout_fn'] = stdout_name
     config_etc['stdout_fn'] = stderr_name

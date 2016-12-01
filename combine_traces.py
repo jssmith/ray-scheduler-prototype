@@ -1,5 +1,12 @@
+import argparse
 import simplejson as json
+import random
 
+from replaystate import TaskSubmit
+from replaystate import computation_decoder
+
+
+MAX_ID = 2**64
 
 def replace_object_id(computation, old_object_id, new_object_id):
     """
@@ -96,21 +103,71 @@ def get_object_ids(computation):
     assert(len(object_ids) == len(set(object_ids)))
     return object_ids
 
-def merge_computations(computation1, computation2):
+def merge_computation(computation1, computation2, offset,
+                      computation1_task_ids,
+                      computation1_object_ids):
     """
-    Merge computation2 into computation1. Each computation is a dictionary
-    mapping task ID (str) to task (replaystate.Task). Returns a tuple of
-    (task_ids, object_ids), a combined list of all task IDs and object IDs used
-    by the merged computation.
+    Merge computation2 into computation1. Each computation is an instance of
+    ComputationDescription. Returns a tuple of (task_ids, object_ids). These
+    are lists of all task IDs and object IDs, respectively, used by the merged
+    computation. computation2 will get merged into computation1 as a task that
+    gets called by computation1's driver at time offset `offset`.
     """
-    pass
+    computation2_task_ids = get_task_ids(computation2)
+    computation2_object_ids = get_object_ids(computation2)
 
-def merge_computations(computations):
+    # Replace all task IDs in computation2 that appear in computation1 with a
+    # new task ID.
+    for task_id in computation2_task_ids:
+        if task_id not in computation1_task_ids:
+            continue
+        # Task ID collision. Replace all instances of task_id in computation2
+        # with a unique task ID.
+        new_task_id = str(random.randint(0, MAX_ID))
+        while new_task_id in computation1_task_ids:
+            new_task_id = str(random.randint(0, MAX_ID))
+        replace_task_id(computation2, task_id, new_task_id)
+        computation1_task_ids.append(new_task_id)
+
+    # Replace all object IDs in computation2 that appear in computation1 with a
+    # new object ID.
+    for object_id in computation2_object_ids:
+        if object_id not in computation1_object_ids:
+            continue
+        # Object ID collision. Replace all instances of object_id in computation2
+        # with a unique object ID.
+        new_object_id = str(random.randint(0, MAX_ID))
+        while new_object_id in computation1_object_ids:
+            new_object_id = str(random.randint(0, MAX_ID))
+        replace_object_id(computation2, object_id, new_object_id)
+        computation1_object_ids.append(new_object_id)
+
+    # Merge in all of computation2's tasks into computation1.
+    for task_id, task in computation2._tasks.iteritems():
+        assert(task_id not in computation1._tasks)
+        computation1._tasks[task_id] = task
+    # Schedule computation2's root task at a time offset in computation 1's
+    # root task's first phase.
+    root_task = computation1._tasks[computation1._root_task]
+    phase0 = root_task.get_phase(0)
+    phase0.submits.append(TaskSubmit(computation2._root_task, offset))
+    return computation1_task_ids, computation1_object_ids
+
+def merge_computations(computations, offsets):
     """
     Merge a list of computations together. Returns a single dictionary
     representing the aggregate computation graph.
     """
-    pass
+    computation = computations.pop(0)
+    task_ids = get_task_ids(computation)
+    object_ids = get_object_ids(computation)
+    offset = 0
+    while computations:
+        computation_to_merge = computations.pop(0)
+        offset += offsets.pop(0)
+        task_ids, object_ids = merge_computation(computation,
+                computation_to_merge, offset, task_ids, object_ids)
+    return computation
 
 def serialize_computation(computation):
     """
@@ -153,3 +210,32 @@ def serialize_computation(computation):
                       sort_keys=True,
                       indent=4,
                       separators=(',', ': '))
+
+parser = argparse.ArgumentParser(description="Take the trace of one job and "
+        "repeat it n times, with a constant time offset between each "
+        "repetition.")
+parser.add_argument("--trace-filename", type=str, required=True,
+                    help="Trace filename")
+parser.add_argument("--repetitions", type=int, required=True,
+                    help="The number of times to repeat the job")
+parser.add_argument("--offset", type=float, required=True,
+                    help="The time offset between repetitions")
+parser.add_argument("--output-filename", default="combined.json", type=str,
+                    help="The time offset between repetitions")
+
+if __name__ == '__main__':
+    args = parser.parse_args()
+    trace_filename = args.trace_filename
+    repetitions = args.repetitions
+    offset = args.offset
+    output_filename = args.output_filename
+
+    offsets = [offset] * (repetitions - 1)
+    computations = []
+    for i in range(repetitions):
+        with open(trace_filename, 'r') as f:
+            computations.append(json.loads(f.read(),
+                                           object_hook=computation_decoder))
+    computation = merge_computations(computations, offsets)
+    with open(output_filename, 'w') as f:
+        f.write(serialize_computation(computation))

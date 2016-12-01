@@ -1,4 +1,5 @@
 import boto
+import boto.sdb
 
 aws_region = 'us-west-2'
 
@@ -11,7 +12,7 @@ def sqs_connect():
     return boto.sqs.connect_to_region(aws_region)
 
 def sdb_connect():
-    return boto.connect_sdb()
+    return boto.sdb.connect_to_region(aws_region)
 
 def create():
     conn = sdb_connect()

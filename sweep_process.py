@@ -85,7 +85,6 @@ def s3_sync_file(src, dst):
     else:
         print 'not found locally {}'.format(dst)
         s3_cp(src, dst)
-    print 'sync from {} to {}'.format(src, dst)
 
 def s3_cp(src, dst):
     print 'copy from {} to {}'.format(src, dst)

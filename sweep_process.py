@@ -27,6 +27,10 @@ def replay_trace(config):
     s3_sync_file(ec2config.s3_bucket + '/' + tracefile, local_tracefile)
 
     # execute the simulator
+    sim_log_fn = 'sweep/sim_events.gz'
+    if os.path.isfile(sim_log_fn):
+        os.remove(sim_log_fn)
+
     proc = Popen(['python', 'replaytrace.py',
             str(config['num_nodes']),
             str(config['num_workers_per_node']),
@@ -41,13 +45,16 @@ def replay_trace(config):
     print stderrdata
     stdout_name = replay_id + '_stdout.gz'
     stderr_name = replay_id + '_stderr.gz'
+
     stdout_fn = sweep_dir + '/' + stdout_name
     stderr_fn = sweep_dir + '/' + stderr_name
     write_output(stdout_fn, stdoutdata)
     write_output(stderr_fn, stderrdata)
-
     s3_cp(stdout_fn, ec2config.s3_bucket + '/sweep/' + stdout_name)
     s3_cp(stderr_fn, ec2config.s3_bucket + '/sweep/' + stderr_name)
+
+    log_name = replay_id + '_event_log.gz'
+    s3_cp(sim_log_fn, ec2config.s3_bucket + '/sweep/' + log_name)
 
     end_time = time.time()
 
@@ -57,6 +64,7 @@ def replay_trace(config):
     config_etc['end_time'] = time.time()
     config_etc['stdout_fn'] = stdout_name
     config_etc['stdout_fn'] = stderr_name
+    config_etc['log_fn'] = log_name
 
     return replay_id, config_etc
 

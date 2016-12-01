@@ -9,6 +9,7 @@ import json
 import uuid
 import hashlib
 import ec2config
+import gitrev
 
 from boto.sqs.message import Message
 from subprocess import call, Popen, PIPE
@@ -67,6 +68,7 @@ def replay_trace(config):
     config_etc['stdout_fn'] = stdout_name
     config_etc['stdout_fn'] = stderr_name
     config_etc['log_fn'] = log_name
+    config_etc['gitrev'] = gitrev.get_git_rev()
 
     return replay_id, config_etc
 

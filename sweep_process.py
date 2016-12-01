@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import copy
@@ -21,7 +22,7 @@ def replay_trace(config):
     while tracefile.startswith('/'):
         tracefile = tracefile[1:]
     local_tracefile = sweep_dir + '/' + tracefile
-    s3_sync(ec2config.s3_bucket + '/' + tracefile, local_tracefile)
+    s3_sync_file(ec2config.s3_bucket + '/' + tracefile, local_tracefile)
 
     # execute the simulator
     proc = Popen(['python', 'replaytrace.py',
@@ -53,15 +54,19 @@ def write_output(fn, text):
     f.write(text)
     f.close()
 
-def s3_sync(src, dst):
+def s3_sync_file(src, dst):
+    if os.path.isfile(dst):
+        print 'already have {}'.format(dst)
+    else:
+        print 'not found locally {}'.format(dst)
+        s3_cp(src, dst)
     print 'sync from {} to {}'.format(src, dst)
-    call(['aws', 's3', 'sync', src, dst])
 
 def s3_cp(src, dst):
     print 'copy from {} to {}'.format(src, dst)
     call(['aws', 's3', 'cp', src, dst])
 
-def process_sweep():
+def process_sweep(sleep_time):
     conn = ec2config.sqs_connect()
     queue = conn.get_queue(ec2config.sqs_sweep_queue)
 
@@ -70,7 +75,7 @@ def process_sweep():
             m = queue.read()
             if m is None:
                 print "waiting for more input"
-                time.sleep(30)
+                time.sleep(sleep_time)
             else:
                 queue.delete_message(m)
                 config = json.loads(m.get_body())
@@ -98,4 +103,9 @@ def process_sweep():
         #     print "Unexpected error", sys.exc_info()[0]
 
 if __name__ == '__main__':
-    process_sweep()
+    if len(sys.argv) == 2:
+        sleep_time = int(sys.argv[1])
+        print 'setting sleep time to {}'.format(sleep_time)
+    else:
+        sleep_time = 30
+    process_sweep(sleep_time)

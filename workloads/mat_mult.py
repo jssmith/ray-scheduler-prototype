@@ -23,8 +23,8 @@ def mat_mul(size, num_workers, block_size):
     print "Matrix multiply with size {}, block size {}".format(size,
             block_size)
     start = time.time()
-    a = da.ones.remote([size, size], block_size=block_size)
-    b = da.ones.remote([size, size], block_size=block_size)
+    a = da.random.remote([size, size], block_size=block_size)
+    b = da.random.remote([size, size], block_size=block_size)
     c = da.dot.remote(a, b)
     c = da.assemble.remote(c)
     print c.id

@@ -1,3 +1,4 @@
+import os
 import sys
 import numpy as np
 import math
@@ -10,10 +11,13 @@ import itertools
 def usage():
     print "Usage: plot_workloads_nodes.py experiment_name"
 
-def drawplots(experiment_name):
+def drawplots(experiment_name, y_variable, y_variable_description):
     json_filename = '{}.json'.format(experiment_name)
     with open(json_filename, 'rb') as f:
         plot_data = json.load(f)
+
+    if not os.path.exists('figs'):
+        os.makedirs('figs')
 
     def unique_values(data, key):
         return sorted(set(map(lambda obs: obs[key], data)))
@@ -33,26 +37,29 @@ def drawplots(experiment_name):
         sp = fig.add_subplot(1, 1, 1)
         workload_data = filter(lambda x: x['tracefile'] == workload, plot_data)
         for scheduler in unique_values(workload_data, 'scheduler'):
-            x = {}
+            series_map = {}
             for data in filter(lambda x: x['scheduler'] == scheduler, workload_data):
-                x[data['num_nodes']] = data['job_completion_time']
-            job_completion_time = []
+                series_map[data['num_nodes']] = data[y_variable]
+            series_y = []
             for num_nodes in all_num_nodes:
-                if num_nodes in x:
-                    job_completion_time.append(x[num_nodes])
+                if num_nodes in series_map:
+                    series_y.append(series_map[num_nodes])
                 else:
-                    job_completion_time.append(None)
-            sp.plot(all_num_nodes, job_completion_time,c=scheduler_colors[scheduler], label=scheduler)
+                    series_y.append(None)
+            sp.plot(all_num_nodes, series_y,c=scheduler_colors[scheduler], label=scheduler)
 
         sp.set_xlabel('Number of Nodes')
-        sp.set_ylabel('Job Completion Time [seconds]')
+        sp.set_ylabel(y_variable_description)
         sp.set_title('Workload {}'.format(workload_name))
         sp.legend(shadow=True, fancybox=True, prop={'size':8})
-        fig.savefig('fig-{}.pdf'.format(workload_name))
+        fig.savefig('figs/fig-{}-{}.pdf'.format(workload_name, y_variable))
 
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         usage()
         sys.exit(1)
-    drawplots(sys.argv[1])
+    drawplots(sys.argv[1], 'job_completion_time', 'Job Completion Time [seconds]')
+    drawplots(sys.argv[1], 'object_transfer_size', 'Object Transfer Size [bytes]')
+    drawplots(sys.argv[1], 'object_transfer_time', 'Object Transfer Time [seconds]')
+    drawplots(sys.argv[1], 'num_object_transfers', 'Number of Object Transfers')

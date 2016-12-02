@@ -1,4 +1,5 @@
 sweep
+figs
 *.pyc
 *.csv
 *.pdf

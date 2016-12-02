@@ -51,7 +51,7 @@ mkdir -p $dot/traces/sweep/
 #    do
 #       rm -r /tmp/raylogs/*
 #       echo running ray_rnn with 1 workers $t steps \(tasks factor\) and scale \(object size factor\) $((s*5))
-#       python $dot/workloads/rnn/rnn_ray_loop.py -w 1 -s $s -n $t
+#       python $dot/workloads/rnn/rnn_ray_6_layers.py -w 1 -s $s -n $t
 #       #generate trace
 #       echo generating trace of ray_rnn with 1 worker $t steps \(tasks factor\) and scale \(object size factor\) $((s*5))
 #       python build_trace.py /tmp/raylogs

@@ -307,7 +307,6 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db,
                                      event_loop)
         self._pylogger = TimestampedLogger(__name__ + '.TransferCostAwareGlobalScheduler', system_time)
-        self._event_loop = event_loop;
         self._schedcycle = 1; #seconds
         self._initializing = True
         self._event_loop.add_timer(self._schedcycle,
@@ -393,7 +392,7 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         return node2object_array
 
     @staticmethod
-    def _handle_timer(context):
+    def _handle_timer(context, setnewtimer=True):
         (self, ) = context
         #timer fired, process pending tasks
         tnow = self._system_time.get_time()
@@ -402,18 +401,21 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         num_executing = len(self._state.executing_tasks)
         num_tasks_total = num_runnable + num_pending + num_executing
         num_tasks_finished = len(self._state.finished_tasks)
-        print "timer handler fired at time t=%s , runnable=%s pending=%s executing=%s finished=%s" \
+        print "[%s] timer handler fired: runnable=%s pending=%s executing=%s finished=%s" \
               % (tnow, num_runnable, num_pending, num_executing, num_tasks_finished)
         task_id_list = self._state.runnable_tasks[:]
+        assert(len(task_id_list) == num_runnable)
 
         #apply task selection policy
         task_id_list = self._apply_task_policy(task_id_list)
 
         if len(task_id_list) > 0:
             (C,U,workercaps, node_id_list) = self._setup_bop(task_id_list)
-
-            P_sol = self.schedule(C, U, workercaps)
-            print "P_sol="; print P_sol
+            if C == None or U == None:
+                P_sol = np.zeros((1,1)) #no allocation
+            else:
+                P_sol = self.schedule(C, U, workercaps) #dimensions : numt x numw
+            print "[%s] P_sol=" %tnow; print P_sol
             (numt, numw) = P_sol.shape
             for i in range(numt):
                 for j in range(numw):
@@ -442,12 +444,13 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
             assert(len(completion_times) > 0)
             # print "completion_times: ", completion_times
 
-            self._schedcycle = np.mean(completion_times)/10.0
+            #self._schedcycle = np.mean(completion_times)/10.0
             # print "[ALEXEY] schedcycle=%s pending=%s executing=%s" \
             #   % (self._schedcycle, len(self._state.pending_tasks), len(self._state.executing_tasks))
 
-        #in all other cases, fire timer
-        self._event_loop.add_timer(self._schedcycle,
+        # in all other cases, fire timer
+        if setnewtimer == True:
+            self._event_loop.add_timer(self._schedcycle,
                                    TransferCostAwareGlobalScheduler._handle_timer, (self,))
 
 
@@ -461,18 +464,21 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         for t in task_id_list:
             total_object_size = sum([self._state.finished_object_sizes[o] for o in self._state.tasks[t].get_depends_on()])
             ot.append((total_object_size, t))
+        print "[%s] OT=" %self._system_time.get_time()
+        print ot
 
         ot.sort(key=lambda tup: tup[0], reverse=True) # high to low sort on object_size
+        print ot
         return [t for o,t in ot[:sum(workercaps)]]
 
     def _apply_task_policy(self, task_id_list, workercaps = None):
         if not workercaps:
             workercaps = self._get_worker_capacities(self._state.nodes)
         if sum(workercaps) >= len(task_id_list):
-            return task_id_list
+            return task_id_list #overprovisioned
 
         #return self._apply_task_policy_trivial(task_id_list, workercaps)
-        return self._apply_task_policy_sized(task_id_list, workercaps)
+        return self._apply_task_policy_sized(task_id_list, workercaps) #under-provisioned
 
     def _setup_bop(self, task_id_list):
         ''' given a set of tasks, set up everything needed to call schedule
@@ -481,6 +487,8 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         node_id_list = sorted(self._state.nodes) # sorted list of node ids
         workercaps = self._get_worker_capacities(node_id_list)
         print "workercaps = "; print workercaps
+        if sum(workercaps) < 1: # wait for at least x workers to be available before scheduling anything
+            return (None, None, workercaps, node_id_list)
 
         (object_usage_array, object_id_list) = self._get_object_usage(task_id_list)
         print "node_id_list"; print node_id_list
@@ -492,41 +500,36 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
 
         return (C,U, workercaps, node_id_list)
 
-    #comment this out if want one task at a time
     def _handle_update(self, update):
-       #just update all the state datastructures
-       #wait for the timer to fire
-       #intercept TaskFinish events
-
        self._state.update(update, self._system_time.get_time())
-       # if isinstance(update, FinishTaskUpdate):
-       #     pass #set scheduling period
+       # trigger the timer handler for each arriving task -- needed to handle an arrival burst more rapidly.
+       if isinstance(update, ForwardTaskUpdate):
+            TransferCostAwareGlobalScheduler._handle_timer((self,), setnewtimer=False)
 
-
-    def _select_node(self, task_id):
-        #construct an optimization problem just for one task
-        #order matters for node, task and object lists!
-        #Post-condition : return the node on which this task is supposed to run
-        task_id_list = [task_id]
-        task_id_list = self._apply_task_policy(task_id_list)
-        if len(task_id_list) > 0:
-            (C,U, workercaps, node_id_list) = self._setup_bop(task_id_list)
-
-            P_sol = self.schedule(C, U, workercaps)
-            print "P_sol="; print P_sol
-            (numt, numw) = P_sol.shape
-            for i in range(numt):
-                for j in range(numw):
-                    if P_sol[i, j]:
-                        #task i is to run on node j
-                        task_id = task_id_list[i]
-                        node_id = node_id_list[j]
-                        #dispatch task_id on node_id
-                        return node_id
-
-
-        #no node was selected or no tasks to schedule
-        return None
+    # def _select_node(self, task_id):
+    #     #construct an optimization problem just for one task
+    #     #order matters for node, task and object lists!
+    #     #Post-condition : return the node on which this task is supposed to run
+    #     task_id_list = [task_id]
+    #     task_id_list = self._apply_task_policy(task_id_list)
+    #     if len(task_id_list) > 0:
+    #         (C,U, workercaps, node_id_list) = self._setup_bop(task_id_list)
+    #
+    #         P_sol = self.schedule(C, U, workercaps)
+    #         print "P_sol="; print P_sol
+    #         (numt, numw) = P_sol.shape
+    #         for i in range(numt):
+    #             for j in range(numw):
+    #                 if P_sol[i, j]:
+    #                     #task i is to run on node j
+    #                     task_id = task_id_list[i]
+    #                     node_id = node_id_list[j]
+    #                     #dispatch task_id on node_id
+    #                     return node_id
+    #
+    #
+    #     #no node was selected or no tasks to schedule
+    #     return None
 
     # input: cost matrix C_wo, usage matrix U_to
     # output:  matrix P_tw , s.t. P[t,w] == 1 iff task t is placed on worker w

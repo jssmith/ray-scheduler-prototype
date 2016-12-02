@@ -95,7 +95,10 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         self._logger.task_scheduled(task_id, node_id, False)
 #        print("State DB received request to schedule task {} on node {}".format(task_id, node_id))
         # TODO: add delay in propagating to local scheduler
-        self._yield_local_scheduler_update(ScheduleTaskUpdate(self._computation.get_task(task_id), node_id))
+        self._yield_local_scheduler_update(
+                ScheduleTaskUpdate(self._computation.get_task(task_id),
+                                   node_id)
+                )
 
     def schedule_root(self, node_id):
         # we schedule the root task separately, initiating it out of global state
@@ -107,6 +110,22 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self._logger.task_submitted(self.root_task_id, node_id)
             self._event_simulation.schedule_immediate(lambda: self.schedule(node_id, self.root_task_id))
             self._event_simulation.schedule_immediate(lambda: self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True)))
+
+    def schedule_driver(self, node_id, task_id):
+        self._pylogger.debug("Scheduling driver task {} on node "
+                             "{}".format(task_id, node_id))
+        task = self._computation.get_task(task_id)
+        assert(task.is_driver_task())
+        self._event_simulation.schedule_immediate(lambda:
+                self.schedule(node_id, task_id)
+                )
+        self._event_simulation.schedule_immediate(lambda:
+                self._yield_global_scheduler_update(
+                    ForwardTaskUpdate(task,
+                                      node_id,
+                                      True)
+                    )
+                )
 
 
 class ObjectStoreRuntime():
@@ -277,12 +296,20 @@ class NodeRuntime():
 
     def send_to_dispatcher(self, task, priority):
         for result in task.get_results():
-        	self._object_store.expect_object(result.object_id, self.node_id)
+            self._object_store.expect_object(result.object_id, self.node_id)
         self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority))
         task_id = task.id()
-        heapq.heappush(self._queue, (priority, self._queue_seq, task_id))
-        self._queue_seq += 1
-        self._event_simulation.schedule_immediate(lambda: self._process_tasks())
+        if task.is_driver_task():
+            # If this is a driver task, allocate a temporary worker to execute
+            # it immediately. Driver tasks should not have any dependencies.
+            self.num_workers += 1
+            phase0 = task.get_phase(0)
+            assert(len(phase0.depends_on) == 0)
+            self._start_task(task_id)
+        else:
+            heapq.heappush(self._queue, (priority, self._queue_seq, task_id))
+            self._queue_seq += 1
+            self._event_simulation.schedule_immediate(lambda: self._process_tasks())
 
     def get_updates(self, update_handler):
         self._update_handlers.append(update_handler)
@@ -339,7 +366,8 @@ class NodeRuntime():
     def _execute_phase_immediate(self, task_id, phase_id):
         self._pylogger.debug('executing task {} phase {}'.format(task_id, phase_id))
         self._logger.task_phase_started(task_id, phase_id, self.node_id)
-        task_phase = self._computation.get_task(task_id).get_phase(phase_id)
+        task = self._computation.get_task(task_id)
+        task_phase = task.get_phase(phase_id)
         for put_event in task_phase.creates:
             self._event_simulation.schedule_delayed(
                     put_event.time_offset,
@@ -354,7 +382,9 @@ class NodeRuntime():
                         self.node_id, put_event.size), self.node_id))
                     )
         for schedule_task in task_phase.submits:
-            self._event_simulation.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
+            self._event_simulation.schedule_delayed(schedule_task.time_offset,
+                    lambda s_task_id=schedule_task.task_id:
+                    self._handle_update(self.TaskSubmitted(s_task_id, 0)))
         self._event_simulation.schedule_delayed(task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id)))
 
     def _internal_scheduler_schedule(self, task_id, phase_id):
@@ -391,6 +421,10 @@ class NodeRuntime():
                 self._task_times.append(self._event_simulation.get_time() - self._task_start_times_map.get(update.task_id, 0)) 
                 #print "task_times: {}".format(self._task_times)
                 self._event_simulation.schedule_immediate(lambda: self._process_tasks())
+                # If this was a driver task, clean up the temporary worker that
+                # was executing it.
+                if task.is_driver_task():
+                    self.num_workers -= 1
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
@@ -501,8 +535,18 @@ class ComputationDescription():
                 raise ValidationError('Task ids must be unique')
             tasks_map[task.id()] = task
 
+        # Mark the root and driver tasks.
         self._root_task = str(root_task)
         self._tasks = tasks_map
+        root_task = self._tasks[self._root_task]
+        root_task.mark_root()
+        if root_task.num_phases() > 1:
+            raise ValidationError("Root task should only have one phase, which "
+                                  "submits all driver tasks")
+        root_task_phase = root_task.get_phase(0)
+        for task_submit in root_task_phase.submits:
+            driver_task = self._tasks[task_submit.task_id]
+            driver_task.mark_driver()
 
     def verify(self):
         tasks = self._tasks.values()
@@ -652,6 +696,9 @@ class ComputationDescription():
         else:
             return self._tasks[self._root_task]
 
+    def is_root_task(self, task_id):
+        return task_id == self._root_task
+
     def get_task(self, task_id):
         return self._tasks[task_id]
 
@@ -678,6 +725,20 @@ class Task():
         self._task_id = task_id_str
         self._phases = phases
         self._results = results
+        self._is_root_task = False
+        self._is_driver = False
+
+    def mark_root(self):
+        self._is_root_task = True
+
+    def is_root_task(self):
+        return self._is_root_task
+
+    def mark_driver(self):
+        self._is_driver = True
+
+    def is_driver_task(self):
+        return self._is_driver
 
     def id(self):
         return self._task_id

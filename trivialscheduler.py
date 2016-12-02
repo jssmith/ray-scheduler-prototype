@@ -52,6 +52,12 @@ class GlobalSchedulerState():
         def dec_executing(self):
             self.num_workers_executing -= 1
 
+        def add_worker(self):
+            self.num_workers += 1
+
+        def remove_worker(self):
+            self.num_workers -= 1
+
         def __str__(self):
             return 'NodeStatus({},{},{})'.format(self.node_id, self.num_workers, self.num_workers_executing)
 
@@ -66,6 +72,11 @@ class GlobalSchedulerState():
     def set_executing(self, task_id, node_id, timestamp):
         node_status = self.nodes[node_id]
         node_status.inc_executing()
+        task = self.tasks[task_id]
+        if task.is_driver_task():
+            # If this is a driver task, the node allocated a temporary worker
+            # to execute it.
+            node_status.add_worker()
         if task_id in self.runnable_tasks:
             self.runnable_tasks.remove(task_id)
         self.executing_tasks[task_id] = node_id
@@ -119,7 +130,13 @@ class GlobalSchedulerState():
 
     def _finish_task(self, task_id):
         node_id = self.executing_tasks[task_id]
-        self.nodes[node_id].dec_executing()
+        node = self.nodes[node_id]
+        node.dec_executing()
+        task = self.tasks[task_id]
+        if task.is_driver_task():
+            # If this was a driver task, clean up the temporary worker that the
+            # node allocated to execute it.
+            node.remove_worker()
         del self.executing_tasks[task_id]
         for result in self.tasks[task_id].get_results():
             object_id = result.object_id
@@ -649,7 +666,13 @@ class PassthroughLocalScheduler():
             self._scheduler_db.finished(update.task_id)
         elif isinstance(update, SubmitTaskUpdate):
 #            print "Forwarding task " + str(update.task)
-            self._scheduler_db.submit(update.task, self._node_runtime.node_id, self._schedule_locally(update.task))
+            if update.task.is_driver_task():
+                self._scheduler_db.schedule_driver(self._node_runtime.node_id,
+                                                   update.task.id())
+            else:
+                self._scheduler_db.submit(update.task,
+                                          self._node_runtime.node_id,
+                                          self._schedule_locally(update.task))
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
@@ -686,7 +709,11 @@ class FlexiblePassthroughLocalScheduler():
             self._scheduler_db.finished(update.task_id)
         elif isinstance(update, SubmitTaskUpdate):
 #            print "Forwarding task " + str(update.task)
-            self._filter_forward(update.task)        
+            if update.task.is_driver_task():
+                self._scheduler_db.schedule_driver(self._node_runtime.node_id,
+                                                   update.task.id())
+            else:
+                self._filter_forward(update.task)
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 

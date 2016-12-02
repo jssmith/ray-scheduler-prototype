@@ -47,6 +47,7 @@ def drawplots(experiment_name):
         sp.set_xlabel('Number of Nodes')
         sp.set_ylabel('Job Completion Time [seconds]')
         sp.set_title('Workload {}'.format(workload_name))
+        sp.legend(shadow=True, fancybox=True, prop={'size':8})
         fig.savefig('fig-{}.pdf'.format(workload_name))
 
 

@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import ec2config
 
 from analyze_basic import analyze_basic
@@ -24,6 +25,7 @@ def gen_csv(experiment_name):
     rs = dom.select(query)
 
     cols = ['tracefile','num_tasks','task_time','num_objects_created','object_created_size','norm_critical_path','num_nodes','num_workers_per_node', 'object_transfer_time_cost', 'scheduler', 'job_completion_time']
+    all_stats = []
     with open('{}.csv'.format(experiment_name), 'w') as f:
         f.write(','.join(cols))
         f.write('\n')
@@ -40,8 +42,11 @@ def gen_csv(experiment_name):
                 print "writing output"
                 f.write(line)
                 f.write('\n')
+                all_stats.append(stats)
             except IOError as err:
                 print err
+    with open('{}.json'.format(experiment_name), 'w') as f:
+        f.write(json.dumps(all_stats))
     sdb_conn.close()
 
 if __name__ == '__main__':

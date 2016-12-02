@@ -197,7 +197,7 @@ def serialize_computation(computation):
             phase = task.get_phase(i)
             phases.append({
                 'phaseId': phase.phase_id,
-                'dependsOn': [int(object_id) for object_id in
+                'dependsOn': [str(object_id) for object_id in
                               phase.depends_on],
                 'submits': [{
                     'taskId': submit.task_id,
@@ -205,7 +205,7 @@ def serialize_computation(computation):
                     } for submit in phase.submits],
                 'duration': phase.duration,
                 'creates': [{
-                    'objectId': int(put.object_id),
+                    'objectId': str(put.object_id),
                     'size': put.size,
                     'timeOffset': put.time_offset,
                     } for put in phase.creates],
@@ -214,7 +214,7 @@ def serialize_computation(computation):
             'taskId': task.id(),
             'phases': phases,
             'results': [{
-                'objectId': int(result.object_id),
+                'objectId': str(result.object_id),
                 'size': result.size,
                 } for result in task.get_results()],
             })

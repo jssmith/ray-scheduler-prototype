@@ -30,7 +30,7 @@ def measure_activity(experiment_name):
         elapsed_time = end_time - start_time
         end_times.append(end_time)
         elapsed_times.append(elapsed_time)
-    print '{} simulation run for experiment {}'.format(len(end_times), experiment_name)
+    print '{} simulations run for experiment {}'.format(len(end_times), experiment_name)
     elapsed_sec = max(end_times) - min(end_times)
     print 'elapsed time {:.0f} seconds ({:.2f} hours)'.format(elapsed_sec, elapsed_sec/3600)
     print 'avg simulation duartion {:.2f} seconds'.format(sum(elapsed_times) / float(len(elapsed_times)))

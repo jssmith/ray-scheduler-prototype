@@ -13,6 +13,7 @@ import gitrev
 
 from boto.sqs.message import Message
 from subprocess import call, Popen, PIPE
+from ec2config import s3_sync_file, s3_cp
 
 def replay_trace(config):
     start_time = time.time()
@@ -78,17 +79,6 @@ def new_id():
 def write_output(fn, text):
     with gzip.open(fn, 'wb') as f:
         f.write(text)
-
-def s3_sync_file(src, dst):
-    if os.path.isfile(dst):
-        print 'already have {}'.format(dst)
-    else:
-        print 'not found locally {}'.format(dst)
-        s3_cp(src, dst)
-
-def s3_cp(src, dst):
-    print 'copy from {} to {}'.format(src, dst)
-    call(['aws', 's3', 'cp', src, dst])
 
 def process_sweep(sleep_time, iteration_limit=None):
     conn = ec2config.sqs_connect()

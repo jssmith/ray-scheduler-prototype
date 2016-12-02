@@ -9,12 +9,11 @@ def usage():
     print "Usage: analyze_basic.py log.gz"
 
 def analyze_basic(fn):
-    setup_logging()
 
     def load_log(fn):
         with gzip.open(fn, 'rb') as f:
             return json.load(f)
-    events = load_log(sys.argv[1])
+    events = load_log(fn)
 
     system_time = SystemTime()
     stats = SummaryStats(system_time)
@@ -26,6 +25,7 @@ def analyze_basic(fn):
     stats.job_ended()
 
     print stats
+    return stats.stats
 
 
 class SystemTime(object):
@@ -45,4 +45,5 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         usage()
         sys.exit(1)
+    setup_logging()
     analyze_basic(sys.argv)

@@ -507,7 +507,7 @@ class ComputationDescription():
     def verify(self):
         tasks = self._tasks.values()
         # all tasks should be called exactly once
-        called_tasks = set(self._root_task)
+        called_tasks = set([self._root_task])
         for task in tasks:
             for phase_id in range(0, task.num_phases()):
                 for task_id in map(lambda x: x.task_id, task.get_phase(phase_id).submits):
@@ -521,7 +521,7 @@ class ComputationDescription():
             tasks_not_called = task_ids_set.difference(called_tasks)
             raise ValidationError('Some tasks are not called: {}'.format(str(tasks_not_called)))
         if len(called_tasks) > len(self._tasks.keys()):
-            raise ValidationError('Too many tasks are called')
+            raise ValidationError('Too many tasks are called - called {} tasks but have {} tasks'.format(len(called_tasks), len(self._tasks.keys())))
 
         # no dependencies that don't get created
         result_objects = set()

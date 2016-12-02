@@ -1,6 +1,10 @@
 import boto
 import boto.sdb
 
+import os
+
+from subprocess import call
+
 aws_region = 'us-west-2'
 
 sdb_sweep_domain = 'raysched-sweep'
@@ -22,6 +26,16 @@ def create():
             conn.create_domain(domain)
     create_if_not_exists(sdb_sweep_domain)
 
+def s3_sync_file(src, dst):
+    if os.path.isfile(dst):
+        print 'already have {}'.format(dst)
+    else:
+        print 'not found locally {}'.format(dst)
+        s3_cp(src, dst)
+
+def s3_cp(src, dst):
+    print 'copy from {} to {}'.format(src, dst)
+    call(['aws', 's3', 'cp', src, dst])
 
 if __name__ == '__main__':
     create()

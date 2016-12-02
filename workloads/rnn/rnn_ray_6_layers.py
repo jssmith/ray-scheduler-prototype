@@ -139,7 +139,7 @@ def rnn_ray(argv):
     #elapsed_time_5_layers_average = sum(elapsed_time_5_layers) / 10
     elapsed_time_6_layers_average = sum(elapsed_time_6_layers) 
 
-    ray.visualize_computation_graph(view=True) 
+    #ray.visualize_computation_graph(view=True) 
 
     print ""
     print "Number of workers = {}.".format(num_of_workers)

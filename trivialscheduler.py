@@ -202,6 +202,7 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
                 bool(node_status.num_workers_executing < node_status.num_workers)))
             #print "global scheduler: node {} num of workers executing {} total num of workers {}".format(node_id, node_status.num_workers_executing, node_status.num_workers)
             if node_status.num_workers_executing < node_status.num_workers:
+                print "[%s] assigned node = %s" %(self._system_time.get_time(), node_id)
                 return node_id
         return None
 
@@ -355,7 +356,7 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
                 else:
                     object_usage_array[i].append(0)
 
-        print object_usage_array
+        #print object_usage_array
         return (object_usage_array, used_object_id_list)
 
     def _get_object_cost(self, object_id_list, node_ids):
@@ -444,7 +445,7 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
             assert(len(completion_times) > 0)
             # print "completion_times: ", completion_times
 
-            #self._schedcycle = np.mean(completion_times)/10.0
+            self._schedcycle = np.mean(completion_times)/10.0
             # print "[ALEXEY] schedcycle=%s pending=%s executing=%s" \
             #   % (self._schedcycle, len(self._state.pending_tasks), len(self._state.executing_tasks))
 
@@ -462,6 +463,9 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         ''' given a set of tasks and worker capacities, return a list of tasks using most data'''
         ot = []
         for t in task_id_list:
+            ready_objects = self._state.tasks[t].get_depends_on()
+            ready_object_sizes = [self._state.finished_object_sizes[o] for o in ready_objects]
+            print "[%s] ready_object_sizes = " %self._system_time.get_time(); print ready_object_sizes
             total_object_size = sum([self._state.finished_object_sizes[o] for o in self._state.tasks[t].get_depends_on()])
             ot.append((total_object_size, t))
         print "[%s] OT=" %self._system_time.get_time()
@@ -503,8 +507,8 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
     def _handle_update(self, update):
        self._state.update(update, self._system_time.get_time())
        # trigger the timer handler for each arriving task -- needed to handle an arrival burst more rapidly.
-       if isinstance(update, ForwardTaskUpdate):
-            TransferCostAwareGlobalScheduler._handle_timer((self,), setnewtimer=False)
+       #if isinstance(update, ForwardTaskUpdate):
+       TransferCostAwareGlobalScheduler._handle_timer((self,), setnewtimer=False)
 
     # def _select_node(self, task_id):
     #     #construct an optimization problem just for one task

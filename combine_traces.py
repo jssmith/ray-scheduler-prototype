@@ -1,6 +1,7 @@
 import argparse
 import simplejson as json
 import random
+import gzip
 
 from replaystate import TaskSubmit
 from replaystate import TaskPhase
@@ -253,9 +254,21 @@ if __name__ == '__main__':
     # Create the list of computation repetitions.
     computations = []
     for i in range(repetitions):
-        with open(trace_filename, 'r') as f:
+        if trace_filename.endswith('.gz'):
+            f = gzip.open(trace_filename, 'rb')
+        else:
+            f = open(trace_filename, 'r')
+        try:
             computations.append(json.loads(f.read(),
                                            object_hook=computation_decoder))
+        finally:
+            f.close()
     computation = merge_computations(computations, offsets)
-    with open(output_filename, 'w') as f:
+    if output_filename.endswith('.gz'):
+        f = gzip.open(output_filename, 'wb')
+    else:
+        g = open(output_filename, 'w')
+    try:
         f.write(serialize_computation(computation))
+    finally:
+        f.close()

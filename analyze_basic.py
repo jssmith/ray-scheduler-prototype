@@ -46,4 +46,4 @@ if __name__ == '__main__':
         usage()
         sys.exit(1)
     setup_logging()
-    analyze_basic(sys.argv)
+    analyze_basic(sys.argv[1])

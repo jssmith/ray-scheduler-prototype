@@ -749,7 +749,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         for node in object_locations.keys():
             if object_locations[node] != ObjectStatus.READY and node != self._node_id and task_id not in self._scheduled_tasks:
                 self._scheduled_tasks.append(task_id)
-                self._pylogger.debug('local load is medium, but remote objects are not ready yet, so sending task {} to global scheduler'.format(task_id))
+                self._pylogger.debug('local load is medium, but remote objects are not ready yet, so sending task {} to global scheduler from node {}'.format(task_id, self._node_id))
                 self._forward_to_global(task, scheduled_locally = False) 
                 ##need to make sure I ignore the next calls of this function!
 
@@ -779,11 +779,11 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
                 self._pylogger.debug('task load is {}'.format(task_load))
              
                 if float(task_load) > float(self.threshold2) :
-                    self._pylogger.debug('local load is medium, and task load is high. task load is {} and threshold is {}, so sending task {} to global scheduler'.format(task_load, self.threshold2, task.id()))
+                    self._pylogger.debug('local load is medium, and task load is high. task load is {} and threshold is {}, so sending task {} to global scheduler from node {}'.format(task_load, self.threshold2, task.id(), self._node_id))
                     self._forward_to_global(task, scheduled_locally = False)
                     self._scheduled_tasks.append(task_id)
                 else:
-                    self._pylogger.debug('local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally'.format(task_load, self.threshold2, task.id()))
+                    self._pylogger.debug('local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally on node {}'.format(task_load, self.threshold2, task.id(), self._node_id))
                     self._node_runtime.send_to_dispatcher(task, 1)
                     self._forward_to_global(task, scheduled_locally = True)
                     self._scheduled_tasks.append(task_id)
@@ -832,21 +832,21 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
 
         #if the local scheduler has very low load, even with expected objects this still reduces to the trivial case (depending on the "low load" threshold)
         elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and (float(self.threshold1l) > float(local_load))):
-            self._pylogger.debug('all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally'.format(local_load, self.threshold1l, task.id()))
+            self._pylogger.debug('all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally on node {}'.format(local_load, self.threshold1l, task.id(), self._node_id))
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)
 
 
         #if the local scheduler has a very high load, it's better to send the task to the global scheduler, even without querrying about all the remote objects
         elif float(local_load) > float(self.threshold1h):
-            self._pylogger.debug('threshold scheduler: local load is very high. local load is {} and threshold is {}, so sending task {} to global scheduler immidietly'.format(local_load, self.threshold1h, task.id()))
+            self._pylogger.debug('threshold scheduler: local load is very high. local load is {} and threshold is {}, so sending task {} to global scheduler immidietly from node {}'.format(local_load, self.threshold1h, task.id(), self._node_id))
             self._forward_to_global(task, scheduled_locally = False)
 
         #the interesting case, where we need information about remote objects
         #elif local_load < self.threshold1h and local_load > self.threshold1l:
         else:
             if not remote_objects:
-                 self._pylogger.debug('local load {} is medium, but all objects will be local, so scheduling task {} locally'.format(local_load, task.id()))
+                 self._pylogger.debug('local load {} is medium, but all objects will be local, so scheduling task {} locally on node {}'.format(local_load, task.id(), self._node_id))
                  self._forward_to_global(task, scheduled_locally = False)
             #querry for remote object sizes and calculate task load
             for remote_object_id in remote_objects:

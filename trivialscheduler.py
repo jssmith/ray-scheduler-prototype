@@ -813,7 +813,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._pylogger.debug('node_efficiency_rate is {}'.format(node_efficiency_rate))
         self._pylogger.debug('avg_task_time is {}'.format(avg_task_time))
         self._pylogger.debug('dispatcher_load is {}'.format(dispatcher_load))
-        local_load = 0 if (node_efficiency_rate == 0) else (((dispatcher_load+self._node_runtime.num_workers_executing) / node_efficiency_rate) / avg_task_time)
+        local_load = 0 if (node_efficiency_rate == 0 or avg_task_time == 0) else (((dispatcher_load+self._node_runtime.num_workers_executing) / node_efficiency_rate) / avg_task_time)
         self._pylogger.debug('local load is {}'.format(local_load))
 
         for d_object_id in task.get_phase(0).depends_on:

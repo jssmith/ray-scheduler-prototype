@@ -1,0 +1,309 @@
+{
+    "rootTask": "0",
+    "tasks": [
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0010387897491455078,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 0,
+                    "size": 2032
+                }
+            ],
+            "taskId": "af1407e846a641c29c27950a0133b2c6"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        6,
+                        1
+                    ],
+                    "duration": 0.0022499561309814453,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 7,
+                    "size": 1232
+                }
+            ],
+            "taskId": "f7203ab1891d41d1b1d3de0d3999ade2"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        8,
+                        3
+                    ],
+                    "duration": 0.002104043960571289,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 9,
+                    "size": 1552
+                }
+            ],
+            "taskId": "c91463de3feb404895ea785065180ebb"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        10
+                    ],
+                    "duration": 0.00189208984375,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 11,
+                    "size": 2672
+                }
+            ],
+            "taskId": "4b76d21cd5164b69a85443655e81a8a4"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0012018680572509766,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 1,
+                    "size": 2352
+                }
+            ],
+            "taskId": "0e5bf9e5be154c968a1c1ad52be8bc0b"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0008749961853027344,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 2,
+                    "size": 2672
+                }
+            ],
+            "taskId": "c24d0c856e974cae8ef31f7074147a4e"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0008149147033691406,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 3,
+                    "size": 2992
+                }
+            ],
+            "taskId": "f16d14a874f2436681af1b978c743ab3"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0008640289306640625,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 4,
+                    "size": 3312
+                }
+            ],
+            "taskId": "64614c74416f4df1b43f578b97a299a7"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0008289813995361328,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 5,
+                    "size": 1712
+                }
+            ],
+            "taskId": "88d733ebbdfa49d1be65d654a78d1a35"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        5,
+                        0
+                    ],
+                    "duration": 0.002232789993286133,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 6,
+                    "size": 1072
+                }
+            ],
+            "taskId": "ff00b42e7f27462cb924ce15a5164b17"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        7,
+                        2
+                    ],
+                    "duration": 0.0021190643310546875,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 8,
+                    "size": 1392
+                }
+            ],
+            "taskId": "444e395dcf9d44259174fa436a393e21"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        9,
+                        4
+                    ],
+                    "duration": 0.002129077911376953,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": 10,
+                    "size": 1712
+                }
+            ],
+            "taskId": "5471cbff079f40d1bb0511f33718df0d"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.39978718757629395,
+                    "phaseId": 0,
+                    "submits": [
+                        {
+                            "taskId": "af1407e846a641c29c27950a0133b2c6",
+                            "timeOffset": 0.38788509368896484
+                        },
+                        {
+                            "taskId": "0e5bf9e5be154c968a1c1ad52be8bc0b",
+                            "timeOffset": 0.3893711566925049
+                        },
+                        {
+                            "taskId": "c24d0c856e974cae8ef31f7074147a4e",
+                            "timeOffset": 0.39029622077941895
+                        },
+                        {
+                            "taskId": "f16d14a874f2436681af1b978c743ab3",
+                            "timeOffset": 0.3912351131439209
+                        },
+                        {
+                            "taskId": "64614c74416f4df1b43f578b97a299a7",
+                            "timeOffset": 0.3921971321105957
+                        },
+                        {
+                            "taskId": "88d733ebbdfa49d1be65d654a78d1a35",
+                            "timeOffset": 0.3930361270904541
+                        },
+                        {
+                            "taskId": "ff00b42e7f27462cb924ce15a5164b17",
+                            "timeOffset": 0.39400315284729004
+                        },
+                        {
+                            "taskId": "f7203ab1891d41d1b1d3de0d3999ade2",
+                            "timeOffset": 0.39510512351989746
+                        },
+                        {
+                            "taskId": "444e395dcf9d44259174fa436a393e21",
+                            "timeOffset": 0.39622020721435547
+                        },
+                        {
+                            "taskId": "c91463de3feb404895ea785065180ebb",
+                            "timeOffset": 0.397327184677124
+                        },
+                        {
+                            "taskId": "5471cbff079f40d1bb0511f33718df0d",
+                            "timeOffset": 0.39850306510925293
+                        },
+                        {
+                            "taskId": "4b76d21cd5164b69a85443655e81a8a4",
+                            "timeOffset": 0.39963603019714355
+                        }
+                    ]
+                },
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        11
+                    ],
+                    "duration": 0.0006201267242431641,
+                    "phaseId": 1,
+                    "submits": []
+                }
+            ],
+            "results": [],
+            "taskId": "0"
+        }
+    ]
+}

@@ -65,13 +65,11 @@ def run_simulation(num_workers, num_simulation_workers):
     runtime = float(lines[-3].split(':')[0])
     return runtime
 
-def generate_data(min_num_workers, max_num_workers):
-    num_workers_range = [2 ** power for power in range(min_num_workers,
-                         max_num_workers + 1)]
+def generate_data(min_num_workers, max_num_workers, step_size):
+    num_workers_range = range(min_num_workers, max_num_workers + 1, step_size)
     actual_runtimes = []
     simulation_results = {}
-    print ("Generating results for workers from {min} to "
-           "{max}".format(min=num_workers_range[0], max=num_workers_range[-1]))
+    print ("Generating results for workers in range {}".format(num_workers_range))
     for num_workers in num_workers_range:
         print ("Running workload for {} workers".format(num_workers))
         actual_runtime = run_workload(num_workers)
@@ -89,7 +87,7 @@ def generate_data(min_num_workers, max_num_workers):
 if __name__ == '__main__':
     import sys
     max_num_workers = int(sys.argv[1])
-    actual_runtimes, simulation_runtimes = generate_data(1, max_num_workers)
+    actual_runtimes, simulation_runtimes = generate_data(2, max_num_workers, 2)
     with open('output.json', 'w') as f:
         f.write(json.dumps({
             "actual": actual_runtimes,

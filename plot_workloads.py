@@ -11,10 +11,18 @@ import itertools
 def usage():
     print "Usage: plot_workloads_nodes.py experiment_name"
 
-def drawplots(experiment_name, y_variable, y_variable_description):
+
+
+def drawplots(experiment_name, y_variable_name, y_variable_description, title=None, output_path = None):
+    drawplots_fn(experiment_name, lambda x: x[y_variable_name], y_variable_name, y_variable_description, lambda: True, title, output_path)
+
+def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_description,
+    filter_fn=lambda: True, title=None, output_path=None):
     json_filename = '{}.json'.format(experiment_name)
     with open(json_filename, 'rb') as f:
         plot_data = json.load(f)
+
+
 
     if not os.path.exists('figs'):
         os.makedirs('figs')
@@ -22,8 +30,8 @@ def drawplots(experiment_name, y_variable, y_variable_description):
     def unique_values(data, key):
         return sorted(set(map(lambda obs: obs[key], data)))
 
-    all_num_nodes = unique_values(plot_data, 'num_nodes')
     all_schedulers = unique_values(plot_data, 'scheduler')
+    all_num_nodes = unique_values(plot_data, 'num_nodes')
 
     colors = itertools.cycle(cm.rainbow(np.linspace(0, 1, len(all_schedulers))))
     scheduler_colors = {}
@@ -31,7 +39,11 @@ def drawplots(experiment_name, y_variable, y_variable_description):
         color = colors.next()
         scheduler_colors[scheduler] = colors.next()
 
-    for workload in unique_values(plot_data, 'tracefile'):
+    plot_data = filter(filter_fn, plot_data)
+
+    all_wokloads = unique_values(plot_data, 'tracefile')
+    index = 0
+    for workload in all_wokloads:
         workload_name = workload.replace('.json','').replace('.gz','').replace('.pdf','').replace('/','-').replace('traces/sweep/','')
         fig = plt.figure(figsize=(16,8), dpi=100)
         sp = fig.add_subplot(1, 1, 1)
@@ -39,7 +51,7 @@ def drawplots(experiment_name, y_variable, y_variable_description):
         for scheduler in unique_values(workload_data, 'scheduler'):
             series_map = {}
             for data in filter(lambda x: x['scheduler'] == scheduler, workload_data):
-                series_map[data['num_nodes']] = data[y_variable]
+                series_map[data['num_nodes']] = y_variable_fn(data)
             series_y = []
             for num_nodes in all_num_nodes:
                 if num_nodes in series_map:
@@ -50,9 +62,22 @@ def drawplots(experiment_name, y_variable, y_variable_description):
 
         sp.set_xlabel('Number of Nodes')
         sp.set_ylabel(y_variable_description)
-        sp.set_title('Workload {}'.format(workload_name))
+        if title is not None:
+            sp.set_title(title)
+        else:
+            sp.set_title('Workload {}'.format(workload_name))
         sp.legend(shadow=True, fancybox=True, prop={'size':8})
-        fig.savefig('figs/fig-{}-{}.pdf'.format(workload_name, y_variable))
+        if output_path is None:
+            fig_fn = 'figs/fig-{}-{}.pdf'.format(workload_name, y_variable_name)
+        else:
+            if len(all_wokloads) > 0:
+                fig_fn = output_path
+            else:
+                fig_fn = '{}-{}'.format(index, output_path)           
+        print output_path
+        print 'output to', fig_fn
+        fig.savefig(fig_fn)
+        index += 1
 
 
 if __name__ == '__main__':
@@ -63,3 +88,6 @@ if __name__ == '__main__':
     drawplots(sys.argv[1], 'object_transfer_size', 'Object Transfer Size [bytes]')
     drawplots(sys.argv[1], 'object_transfer_time', 'Object Transfer Time [seconds]')
     drawplots(sys.argv[1], 'num_object_transfers', 'Number of Object Transfers')
+    drawplots_fn(sys.argv[1], lambda x: x['submit_to_phase0_time'] / x['num_tasks'],
+        'avg_submit_to_phase0_time', 'Average submit to phase0 time [seconds]')
+    drawplots(sys.argv[1], 'num_tasks_scheduled_locally', 'Number of tasks shceduled locally')

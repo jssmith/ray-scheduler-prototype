@@ -14,15 +14,16 @@ def poster_figs():
     # global scheduler job completion time vs nodes
     #  - Workloads: RNN (combined ?x, ?delay), RLPong (combined ?x, ?delay)
     #  - Synthetic Matrix Multiplication
-    drawplots_fn('syn-matmul-8-d', lambda x: x['job_completion_time'],
+    experiment_name_graph2 = 'graphs-2-a'
+    drawplots_fn(experiment_name_graph2, lambda x: x['job_completion_time'],
         'job_completion_time', 'Job Completion Time [seconds]',
         lambda x: not x['scheduler'].endswith('local'),
-        'Global Schedulers - Synthetic Multiplication 16,000x16,000',
+        'Global Schedulers - Synthetic Matrix Multiplication 16,000x16,000',
         'poster_figs/syn_matmult_global.pdf')
-    drawplots_fn('syn-matmul-8-d', lambda x: x['job_completion_time'],
+    drawplots_fn(experiment_name_graph2, lambda x: x['job_completion_time'],
         'job_completion_time', 'Job Completion Time [seconds]',
         lambda x: x['scheduler'].endswith('local'),
-        'Local Schedulers - Synthetic Multiplication 16,000x16,000',
+        'Local Schedulers - Synthetic Matrix Multiplication 16,000x16,000',
         'poster_figs/syn_matmult_local.pdf')
 
 

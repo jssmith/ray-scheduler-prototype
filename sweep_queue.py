@@ -36,8 +36,13 @@ def queue_sweep(args):
     nodes = min_nodes
     while nodes <= max_nodes:
         node_cts.append(nodes)
-        nodes_f *= node_step_mult
-        nodes = math.ceil(nodes_f)
+        new_nodes_f = nodes_f
+        new_nodes = nodes
+        while new_nodes == nodes:
+            new_nodes_f *= node_step_mult
+            new_nodes = math.ceil(new_nodes_f)
+        nodes_f = new_nodes_f
+        nodes = new_nodes
 
     print 'Schedulers:', schedulers
     print 'Num nodes:', node_cts

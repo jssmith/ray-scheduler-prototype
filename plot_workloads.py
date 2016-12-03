@@ -14,21 +14,22 @@ def usage():
 
 
 def drawplots(experiment_name, y_variable_name, y_variable_description, title=None, output_path = None):
-    drawplots_fn(experiment_name, lambda x: x[y_variable_name], y_variable_name, y_variable_description, lambda: True, title, output_path)
+    drawplots_fn(experiment_name, lambda x: x[y_variable_name], y_variable_name, y_variable_description, lambda x: True, title, output_path)
 
 def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_description,
-    filter_fn=lambda: True, title=None, output_path=None):
+    filter_fn=lambda x: True, title=None, output_path=None):
     json_filename = '{}.json'.format(experiment_name)
     with open(json_filename, 'rb') as f:
         plot_data = json.load(f)
-
-
 
     if not os.path.exists('figs'):
         os.makedirs('figs')
 
     def unique_values(data, key):
         return sorted(set(map(lambda obs: obs[key], data)))
+
+    for x in plot_data:
+        x['num_nodes'] = int(x['num_nodes'])
 
     all_schedulers = unique_values(plot_data, 'scheduler')
     all_num_nodes = unique_values(plot_data, 'num_nodes')
@@ -74,9 +75,9 @@ def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_des
                 fig_fn = output_path
             else:
                 fig_fn = '{}-{}'.format(index, output_path)           
-        print output_path
         print 'output to', fig_fn
         fig.savefig(fig_fn)
+        plt.close(fig)
         index += 1
 
 

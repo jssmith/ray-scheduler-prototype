@@ -519,7 +519,7 @@ class EventLoop():
 #              Data model for saved computations               #
 ################################################################
 class ComputationDescription():
-    def __init__(self, root_task, tasks):
+    def __init__(self, root_task, tasks, is_combined=False):
         if root_task is None:
             if len(tasks) != 0:
                 raise ValidationError('Too many tasks are called')
@@ -538,17 +538,27 @@ class ComputationDescription():
         # Mark the root and driver tasks.
         self._root_task = str(root_task)
         self._tasks = tasks_map
+        self._is_combined = is_combined
         root_task = self._tasks[self._root_task]
-        root_task.mark_root()
-        if root_task.num_phases() > 1:
-            raise ValidationError("Root task should only have one phase, which "
-                                  "submits all driver tasks")
-        root_task_phase = root_task.get_phase(0)
-        for task_submit in root_task_phase.submits:
-            driver_task = self._tasks[task_submit.task_id]
+        if is_combined:
+            # If this is a combined trace, the tasks submitted by the root task
+            # are the driver tasks.
+            root_task_phase = root_task.get_phase(0)
+            for task_submit in root_task_phase.submits:
+                driver_task = self._tasks[task_submit.task_id]
+                driver_task.mark_driver()
+        else:
+            # Else, the root task is the driver task.
+            driver_task = root_task
             driver_task.mark_driver()
 
     def verify(self):
+        root_task = self._tasks[self._root_task]
+        if self._is_combined and root_task.num_phases() > 1:
+            raise ValidationError("Root task for a combined trace should only "
+                                  "have one phase, which submits all driver "
+                                  "tasks")
+
         tasks = self._tasks.values()
         # all tasks should be called exactly once
         called_tasks = set([self._root_task])
@@ -696,9 +706,6 @@ class ComputationDescription():
         else:
             return self._tasks[self._root_task]
 
-    def is_root_task(self, task_id):
-        return task_id == self._root_task
-
     def get_task(self, task_id):
         return self._tasks[task_id]
 
@@ -725,14 +732,7 @@ class Task():
         self._task_id = task_id_str
         self._phases = phases
         self._results = results
-        self._is_root_task = False
         self._is_driver = False
-
-    def mark_root(self):
-        self._is_root_task = True
-
-    def is_root_task(self):
-        return self._is_root_task
 
     def mark_driver(self):
         self._is_driver = True
@@ -919,7 +919,10 @@ def computation_decoder(dict):
     if keys == frozenset([u'phases', u'results', u'taskId']):
         return Task(dict[u'taskId'], dict[u'phases'], dict[u'results'])
     if keys == frozenset([u'tasks', u'rootTask']):
-        return ComputationDescription(dict[u'rootTask'], dict[u'tasks'])
+        return ComputationDescription(dict[u'rootTask'], dict[u'tasks'], is_combined=False)
+    if keys == frozenset([u'tasks', u'rootTask', u'isCombined']):
+        return ComputationDescription(dict[u'rootTask'], dict[u'tasks'],
+                is_combined=dict[u'isCombined'])
     if keys == frozenset([u'objectId', u'size']):
         return TaskResult(dict[u'objectId'], int(dict[u'size']))
     if keys == frozenset([u'objectId', u'size', u'timeOffset']):

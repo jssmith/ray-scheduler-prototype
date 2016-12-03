@@ -718,7 +718,9 @@ class TestNodeRuntime(unittest.TestCase):
 
         self._advance()
 
-        self.assertItemsEqual([(0.5, 1)], self.free_workers)
+        # There should still be 2 free workers, since the root task is
+        # non-blocking.
+        self.assertItemsEqual([(0.5, 2)], self.free_workers)
         self.assertItemsEqual([(1.0, FinishTaskUpdate(task_0.id()))], self.updates)
         task_0_result_addition = ObjectAddition(
                 phase_0_0.duration,
@@ -752,7 +754,9 @@ class TestNodeRuntime(unittest.TestCase):
 
         self._advance()
 
-        self.assertItemsEqual([(0.5, 1)], self.free_workers)
+        # There should still be 2 free workers, since the root task is
+        # non-blocking.
+        self.assertItemsEqual([(0.5, 2)], self.free_workers)
         self.assertItemsEqual([
             (1.0, FinishTaskUpdate(task_0.id())),
             (0.5, ObjectReadyUpdate(ObjectDescription(
@@ -800,7 +804,9 @@ class TestNodeRuntime(unittest.TestCase):
 
         self._advance()
 
-        self.assertItemsEqual([(2.0, 1)], self.free_workers)
+        # There should still be 2 free workers, since the root task is
+        # non-blocking.
+        self.assertItemsEqual([(2.0, 2)], self.free_workers)
         self.assertItemsEqual([
             (2.5, FinishTaskUpdate(task_0.id())),
             (0.5, ObjectReadyUpdate(ObjectDescription(
@@ -837,7 +843,9 @@ class TestNodeRuntime(unittest.TestCase):
 
         self._advance()
 
-        self.assertItemsEqual([(2.0, 1)], self.free_workers)
+        # There should still be 2 free workers, since the root task is
+        # non-blocking.
+        self.assertItemsEqual([(2.0, 2)], self.free_workers)
         self.assertItemsEqual([(2.5, FinishTaskUpdate(task_0.id()))], self.updates)
         self.assertItemsEqual([ObjectAddition(2.5, '0', 1, 100)],
                               self.objects_added)

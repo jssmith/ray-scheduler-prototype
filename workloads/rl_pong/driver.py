@@ -5,6 +5,7 @@ import numpy as np
 import cPickle as pickle
 import ray
 import argparse
+import time
 
 import gym
 
@@ -124,6 +125,7 @@ if __name__ == "__main__":
            node_ip_address=args.node_ip_address,
            scheduler_address=args.scheduler_address,
            num_workers=(args.workers if args.node_ip_address is None else None))
+  start_time = time.time()
 
   # Run the reinforcement learning
   running_reward = None
@@ -159,5 +161,8 @@ if __name__ == "__main__":
       grad_buffer[k] = np.zeros_like(v) # reset batch gradient buffer
     batch_num += 1
     if batch_num % 10 == 0: pickle.dump(model, open("save.p", "wb"))
+
+  end_time = time.time()
+  print end_time - start_time
 
   #ray.visualize_computation_graph(view=True) 

@@ -3,8 +3,7 @@ import subprocess32 as subprocess
 import simplejson as json
 
 RAY_LOG_DIRECTORY = "/tmp/raylogs"
-RUN_WORKLOAD_SCRIPT = "../workloads/rnn/rnn_ray_6_layers.py"
-SCALE = 1
+RUN_WORKLOAD_SCRIPT = "../workloads/rl_pong/driver.py"
 NUM_STEPS = 1
 
 BUILD_TRACE_SCRIPT = "../build_trace.py"
@@ -27,16 +26,15 @@ def run_workload(num_workers):
 
     # Run the workload.
     proc = subprocess.Popen(["python", RUN_WORKLOAD_SCRIPT,
-                             "-w", str(num_workers),
-                             "-s", str(SCALE),
-                             "-n", str(NUM_STEPS)],
+                             "--iterations", str(NUM_STEPS * 10),
+                             "--workers", str(num_workers),
+                             ],
                             stdout=subprocess.PIPE
                             )
     proc.wait()
     output = proc.stdout.read()
     output = output.split('\n')
-    output = output[-3].split()
-    runtime = float(output[-1])
+    runtime = float(output[12])
 
     # Build the trace.
     proc = subprocess.Popen(["python", "../build_trace.py", RAY_LOG_DIRECTORY,

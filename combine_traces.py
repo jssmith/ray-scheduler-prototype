@@ -62,8 +62,6 @@ def replace_task_id(computation, old_task_id, new_task_id):
     """
     Replace all instances of old_task_id with new_task_id in the computation.
     """
-    if old_task_id not in computation._tasks:
-        return
     # Replace ID of the matching Task instance with the new task ID.
     task = computation._tasks.pop(old_task_id)
     task._task_id = new_task_id
@@ -224,7 +222,6 @@ def serialize_computation(computation):
     json_dict = {
             'rootTask': computation._root_task,
             'tasks': tasks,
-            'isCombined': True,
             }
     return json.dumps(json_dict,
                       sort_keys=True,
@@ -270,7 +267,7 @@ if __name__ == '__main__':
     if output_filename.endswith('.gz'):
         f = gzip.open(output_filename, 'wb')
     else:
-        f = open(output_filename, 'w')
+        g = open(output_filename, 'w')
     try:
         f.write(serialize_computation(computation))
     finally:

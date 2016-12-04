@@ -11,19 +11,20 @@ import itertools
 def usage():
     print "Usage: plot_workloads_nodes.py experiment_name"
 
+def require_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
 
-
-def drawplots(experiment_name, y_variable_name, y_variable_description, title=None, output_path = None):
-    drawplots_fn(experiment_name, lambda x: x[y_variable_name], y_variable_name, y_variable_description, lambda x: True, title, output_path)
+def drawplots(experiment_name, y_variable_name, y_variable_description, title=None, output_filename = None):
+    drawplots_fn(experiment_name, lambda x: x[y_variable_name], y_variable_name, y_variable_description, lambda x: True, title, output_filename)
 
 def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_description,
-    filter_fn=lambda x: True, title=None, output_path=None):
+    filter_fn=lambda x: True, title=None, output_filename=None):
     json_filename = '{}.json'.format(experiment_name)
     with open(json_filename, 'rb') as f:
         plot_data = json.load(f)
 
-    if not os.path.exists('figs'):
-        os.makedirs('figs')
+    require_dir('figs')
 
     def unique_values(data, key):
         return sorted(set(map(lambda obs: obs[key], data)))
@@ -37,7 +38,6 @@ def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_des
     colors = itertools.cycle(cm.rainbow(np.linspace(0, 1, len(all_schedulers))))
     scheduler_colors = {}
     for scheduler in all_schedulers:
-        color = colors.next()
         scheduler_colors[scheduler] = colors.next()
 
     plot_data = filter(filter_fn, plot_data)
@@ -59,7 +59,7 @@ def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_des
                     series_y.append(series_map[num_nodes])
                 else:
                     series_y.append(None)
-            sp.plot(all_num_nodes, series_y,c=scheduler_colors[scheduler], label=scheduler)
+            sp.plot(all_num_nodes, series_y, c=scheduler_colors[scheduler], label=scheduler)
 
         sp.set_xlabel('Number of Nodes')
         sp.set_ylabel(y_variable_description)
@@ -68,13 +68,14 @@ def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_des
         else:
             sp.set_title('Workload {}'.format(workload_name))
         sp.legend(shadow=True, fancybox=True, prop={'size':8})
-        if output_path is None:
-            fig_fn = 'figs/fig-{}-{}.pdf'.format(workload_name, y_variable_name)
+        if output_filename is None:
+            fig_fn = 'figs/{}/fig-{}-{}.pdf'.format(experiment_name, workload_name, y_variable_name)
+            require_dir('figs/{}'.format(experiment_name))
         else:
             if len(all_wokloads) > 0:
-                fig_fn = output_path
+                fig_fn = output_filename
             else:
-                fig_fn = '{}-{}'.format(index, output_path)           
+                fig_fn = '{}-{}'.format(index, output_filename)
         print 'output to', fig_fn
         fig.savefig(fig_fn)
         plt.close(fig)

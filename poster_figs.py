@@ -14,17 +14,42 @@ def poster_figs():
     # global scheduler job completion time vs nodes
     #  - Workloads: RNN (combined ?x, ?delay), RLPong (combined ?x, ?delay)
     #  - Synthetic Matrix Multiplication
-    experiment_name_graph2 = 'graphs-2-a'
-    drawplots_fn(experiment_name_graph2, lambda x: x['job_completion_time'],
+    experiment_name_graph2_matmult = 'graphs-dec4-d'
+    drawplots_fn(experiment_name_graph2_matmult, lambda x: x['job_completion_time'],
         'job_completion_time', 'Job Completion Time [seconds]',
         lambda x: not x['scheduler'].endswith('local'),
         'Global Schedulers - Synthetic Matrix Multiplication 16,000x16,000',
         'poster_figs/syn_matmult_global.pdf')
-    drawplots_fn(experiment_name_graph2, lambda x: x['job_completion_time'],
+    drawplots_fn(experiment_name_graph2_matmult, lambda x: x['job_completion_time'],
         'job_completion_time', 'Job Completion Time [seconds]',
         lambda x: x['scheduler'].endswith('local'),
         'Local Schedulers - Synthetic Matrix Multiplication 16,000x16,000',
         'poster_figs/syn_matmult_local.pdf')
+
+    experiment_name_graph2_rnn = 'graphs-dec4-e'
+    drawplots_fn(experiment_name_graph2_rnn, lambda x: x['job_completion_time'],
+        'job_completion_time', 'Job Completion Time [seconds]',
+        lambda x: not x['scheduler'].endswith('local'),
+        'Global Schedulers - RNN',
+        'poster_figs/rnn_global.pdf')
+    drawplots_fn(experiment_name_graph2_rnn, lambda x: x['job_completion_time'],
+        'job_completion_time', 'Job Completion Time [seconds]',
+        lambda x: x['scheduler'].endswith('local'),
+        'Local Schedulers - RLPong',
+        'poster_figs/rnn_local.pdf')
+
+    experiment_name_graph2_rlpong = 'graphs-dec4-f'
+    drawplots_fn(experiment_name_graph2_rlpong, lambda x: x['job_completion_time'],
+        'job_completion_time', 'Job Completion Time [seconds]',
+        lambda x: not x['scheduler'].endswith('local'),
+        'Global Schedulers - RNN',
+        'poster_figs/rlpong_global.pdf')
+    drawplots_fn(experiment_name_graph2_rlpong, lambda x: x['job_completion_time'],
+        'job_completion_time', 'Job Completion Time [seconds]',
+        lambda x: x['scheduler'].endswith('local'),
+        'Local Schedulers - RLPong',
+        'poster_figs/rlpong_local.pdf')
+
 
 
 if __name__ == '__main__':

@@ -267,7 +267,7 @@ if __name__ == '__main__':
     if output_filename.endswith('.gz'):
         f = gzip.open(output_filename, 'wb')
     else:
-        g = open(output_filename, 'w')
+        f = open(output_filename, 'w')
     try:
         f.write(serialize_computation(computation))
     finally:

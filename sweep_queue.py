@@ -28,23 +28,12 @@ def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}):
 def queue_sweep(args):
     min_nodes = int(args[1])
     max_nodes = int(args[2])
-    node_step_mult = float(args[3])
+    nodes_step = int(args[3])
     schedulers = str.split(args[4])
     experiment_name = args[5]
     tracefile = args[6]
 
-    node_cts = []
-    nodes_f = float(min_nodes)
-    nodes = min_nodes
-    while nodes <= max_nodes:
-        node_cts.append(nodes)
-        new_nodes_f = nodes_f
-        new_nodes = nodes
-        while new_nodes == nodes:
-            new_nodes_f *= node_step_mult
-            new_nodes = math.ceil(new_nodes_f)
-        nodes_f = new_nodes_f
-        nodes = new_nodes
+    node_cts = range(min_nodes, max_nodes + 1, nodes_step)
 
     print 'Schedulers:', schedulers
     print 'Num nodes:', node_cts

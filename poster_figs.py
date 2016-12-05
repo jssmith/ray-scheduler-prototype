@@ -1,7 +1,7 @@
 import os
 import sys
 
-from plot_workloads import drawplots_fn
+from plot_workloads import drawplots_fn, drawplots_generic
 
 def usage():
     print "Usage: poster_figs.py"
@@ -50,7 +50,13 @@ def poster_figs():
         'Local Schedulers - RLPong',
         'poster_figs/rlpong_local.pdf')
 
-
+    experiment_name_threshold = 'graphs-dec4-threshold-b'
+    drawplots_generic(experiment_name_threshold,
+        lambda x: x['env']['RAY_SCHED_THRESHOLD1L'], 't1l', 'Threshold 1L',
+        lambda x: x['job_completion_time'], 'job_completion_time', 'Job Completion Time [seconds]',
+        lambda x: not x['scheduler'].startswith('trivial'),
+        'Threshold - RLPong',
+        'poster_figs/rlpong_threshold.pdf')
 
 if __name__ == '__main__':
     if len(sys.argv) != 1:

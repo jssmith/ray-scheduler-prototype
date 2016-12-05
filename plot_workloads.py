@@ -20,20 +20,29 @@ def drawplots(experiment_name, y_variable_name, y_variable_description, title=No
 
 def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_description,
     filter_fn=lambda x: True, title=None, output_filename=None):
+    drawplots_generic(experiment_name,
+        lambda x: x['num_nodes'], 'num_nodes' , 'Number of Nodes',
+        y_variable_fn, y_variable_name, y_variable_description,
+        filter_fn, title, output_filename)
+
+def drawplots_generic(experiment_name,
+    x_variable_fn, x_variable_name, x_variable_description,
+    y_variable_fn, y_variable_name, y_variable_description,
+    filter_fn=lambda x: True, title=None, output_filename=None):
     json_filename = '{}.json'.format(experiment_name)
     with open(json_filename, 'rb') as f:
         plot_data = json.load(f)
 
     require_dir('figs')
 
-    def unique_values(data, key):
-        return sorted(set(map(lambda obs: obs[key], data)))
+    def unique_values(data, fn):
+        return sorted(set(map(fn, data)))
 
     for x in plot_data:
         x['num_nodes'] = int(x['num_nodes'])
 
-    all_schedulers = unique_values(plot_data, 'scheduler')
-    all_num_nodes = unique_values(plot_data, 'num_nodes')
+    all_schedulers = unique_values(plot_data, lambda x: x['scheduler'])
+    series_x = unique_values(plot_data, x_variable_fn)
 
     colors = itertools.cycle(cm.rainbow(np.linspace(0, 1, len(all_schedulers))))
     scheduler_colors = {}
@@ -42,24 +51,25 @@ def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_des
 
     plot_data = filter(filter_fn, plot_data)
 
-    all_wokloads = unique_values(plot_data, 'tracefile')
+    all_wokloads = unique_values(plot_data, lambda x: x['tracefile'])
     index = 0
     for workload in all_wokloads:
         workload_name = workload.replace('.json','').replace('.gz','').replace('.pdf','').replace('/','-').replace('traces/sweep/','')
         fig = plt.figure(figsize=(16,8), dpi=100)
         sp = fig.add_subplot(1, 1, 1)
         workload_data = filter(lambda x: x['tracefile'] == workload, plot_data)
-        for scheduler in unique_values(workload_data, 'scheduler'):
+        for scheduler in unique_values(workload_data, lambda x: x['scheduler']):
             series_map = {}
             for data in filter(lambda x: x['scheduler'] == scheduler, workload_data):
-                series_map[data['num_nodes']] = y_variable_fn(data)
+                series_map[x_variable_fn(data)] = y_variable_fn(data)
             series_y = []
-            for num_nodes in all_num_nodes:
-                if num_nodes in series_map:
-                    series_y.append(series_map[num_nodes])
+            # Fill in missing values with None
+            for x_value in series_x:
+                if x_value in series_map:
+                    series_y.append(series_map[x_value])
                 else:
                     series_y.append(None)
-            sp.plot(all_num_nodes, series_y, c=scheduler_colors[scheduler], label=scheduler)
+            sp.plot(series_x, series_y, c=scheduler_colors[scheduler], label=scheduler)
 
         sp.set_xlabel('Number of Nodes')
         sp.set_ylabel(y_variable_description)
@@ -69,7 +79,7 @@ def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_des
             sp.set_title('Workload {}'.format(workload_name))
         sp.legend(shadow=True, fancybox=True, prop={'size':8})
         if output_filename is None:
-            fig_fn = 'figs/{}/fig-{}-{}.pdf'.format(experiment_name, workload_name, y_variable_name)
+            fig_fn = 'figs/{}/fig-{}-{}-{}.pdf'.format(experiment_name, workload_name, y_variable_name, x_variable_name)
             require_dir('figs/{}'.format(experiment_name))
         else:
             if len(all_wokloads) > 0:

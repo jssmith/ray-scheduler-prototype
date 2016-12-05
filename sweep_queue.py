@@ -3,10 +3,11 @@ import json
 import math
 import sys
 import ec2config
+import json
 
 from boto.sqs.message import Message
 
-def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name):
+def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}):
     m = Message()
     s = json.dumps({
             'scheduler': scheduler,
@@ -16,7 +17,8 @@ def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name):
             'db_message_delay': .001,
             'validate': 'false',
             'tracefile': str(tracefile),
-            'experiment_name': str(experiment_name)
+            'experiment_name': str(experiment_name),
+            'env': env
         })
     print s
     m.set_body(s)
@@ -54,7 +56,6 @@ def queue_sweep(args):
     for scheduler in schedulers:
         for num_nodes in node_cts:
             enqueue(queue, num_nodes, scheduler, tracefile, experiment_name)
-
 
 def usage():
     print 'Usage: queue_sweep.py min_nodes max_nodes node_step_mult schedulers experiment_name tracefile'

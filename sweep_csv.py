@@ -37,6 +37,8 @@ def gen_csv(experiment_name):
                 stats = extract_data(r.name, r)
                 print "updating"
                 stats.update(dict((x, y) for x, y in r.items()))
+                if 'env' in stats:
+                    stats['env'] = json.loads(stats['env'])
                 stats['norm_critical_path'] = -1
                 line = ','.join(map(lambda x: str(stats[x]), cols))
                 print "writing output"

@@ -8,6 +8,7 @@ import socket
 import json
 import uuid
 import hashlib
+import traceback
 import ec2config
 import gitrev
 
@@ -21,12 +22,17 @@ def replay_trace(config):
     sweep_dir = 'sweep'
     print "starting replay", replay_id
 
-    # copy the neede trace to the local instance
+    # copy the needed trace to the local instance
     tracefile = str(config['tracefile'])
     while tracefile.startswith('/'):
         tracefile = tracefile[1:]
     local_tracefile = sweep_dir + '/' + tracefile
     s3_sync_file(ec2config.s3_bucket + '/' + tracefile, local_tracefile)
+
+    env = os.environ.copy()
+    if 'env' in config and config['env']:
+        for name, val in config['env'].items():
+            env[name] = str(val)
 
     # execute the simulator
     sim_log_fn = 'sweep/sim_events.gz'
@@ -41,7 +47,7 @@ def replay_trace(config):
             str(config['scheduler']),
             str(config['validate']),
             local_tracefile
-        ], stdout=PIPE, stderr=PIPE)
+        ], stdout=PIPE, stderr=PIPE, env=env)
     (stdoutdata, stderrdata) = proc.communicate()
     returncode = proc.returncode
 
@@ -70,6 +76,8 @@ def replay_trace(config):
     config_etc['stdout_fn'] = stderr_name
     config_etc['log_fn'] = log_name
     config_etc['gitrev'] = gitrev.get_rev()
+    if 'env' in config_etc:
+        config_etc['env'] = json.dumps(config_etc['env'])
 
     return replay_id, config_etc
 
@@ -105,8 +113,10 @@ def process_sweep(sleep_time, iteration_limit=None):
 
         except ValueError as err:
             print err
+            traceback.print_exc()
         except RuntimeError as err:
             print err
+            traceback.print_exc()
         # except:
         #     print "Unexpected error", sys.exc_info()[0]
     if iteration_limit is None:

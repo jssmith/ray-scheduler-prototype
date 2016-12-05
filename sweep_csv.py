@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import gzip
 import ec2config
 
 from analyze_basic import analyze_basic
@@ -47,7 +48,7 @@ def gen_csv(experiment_name):
                 all_stats.append(stats)
             except IOError as err:
                 print err
-    with open('{}.json'.format(experiment_name), 'w') as f:
+    with gzip.open('sweep-summaries/{}.json.gz'.format(experiment_name), 'wb') as f:
         f.write(json.dumps(all_stats))
     sdb_conn.close()
 

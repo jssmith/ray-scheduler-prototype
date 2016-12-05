@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import math
 import json
+import gzip
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -29,8 +30,8 @@ def drawplots_generic(experiment_name,
     x_variable_fn, x_variable_name, x_variable_description,
     y_variable_fn, y_variable_name, y_variable_description,
     filter_fn=lambda x: True, title=None, output_filename=None):
-    json_filename = '{}.json'.format(experiment_name)
-    with open(json_filename, 'rb') as f:
+    json_filename = 'sweep-summaries/{}.json.gz'.format(experiment_name)
+    with gzip.open(json_filename, 'rb') as f:
         plot_data = json.load(f)
 
     require_dir('figs')

@@ -72,16 +72,13 @@ def replay_trace(config):
     print "finished replay {} in {:.3f}".format(replay_id, end_time - start_time)
 
     config_etc = copy.copy(config)
-    config_etc['hostname'] = socket.gethostname()
-    config_etc['start_time'] = start_time
+
     config_etc['end_time'] = end_time
     config_etc['returncode'] = returncode
     config_etc['stdout_fn'] = stdout_name
     config_etc['stdout_fn'] = stderr_name
     config_etc['log_fn'] = log_name
-    config_etc['gitrev'] = gitrev.get_rev()
-    if 'env' in config_etc:
-        config_etc['env'] = json.dumps(config_etc['env'])
+    config_etc['is-start'] = False
 
     return config_etc
 
@@ -105,12 +102,20 @@ def sweep_process(sleep_time, iteration_limit=None):
                 print config
 
                 replay_id = config['replay_id']
+                config_start = copy.copy(config)
+                config_start['hostname'] = socket.gethostname()
+                config_start['gitrev'] = gitrev.get_rev()
+                config_start['start_time'] = time.time()
+                config_start['is-start'] = True
                 sdb_conn = ec2config.sdb_connect()
                 dom = sdb_conn.get_domain(ec2config.sdb_sweep_domain)
                 dom.put_attributes(replay_id + '-start', config)
                 sdb_conn.close()
 
-                config_etc = replay_trace(config)
+                config_etc = replay_trace(config_start)
+
+                if 'env' in config_etc:
+                    config_etc['env'] = json.dumps(config_etc['env'])
 
                 sdb_conn = ec2config.sdb_connect()
                 dom = sdb_conn.get_domain(ec2config.sdb_sweep_domain)

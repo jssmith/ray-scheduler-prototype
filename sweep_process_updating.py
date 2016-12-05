@@ -1,7 +1,7 @@
 import os
 import sys
 import gitrev
-from sweep_process import process_sweep
+from sweep_process import sweep_process
 
 
 if __name__ == '__main__':
@@ -21,4 +21,4 @@ if __name__ == '__main__':
             os.execl(executable, executable, 'sweep_process_updating.py', str(sleep_time))
         else:
             print "git revision up to date"
-        process_sweep(sleep_time, 1)
+        sweep_process(sleep_time, 1)

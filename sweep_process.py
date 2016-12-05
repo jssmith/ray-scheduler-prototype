@@ -6,8 +6,6 @@ import copy
 import boto.sqs
 import socket
 import json
-import uuid
-import hashlib
 import traceback
 import ec2config
 import gitrev
@@ -18,7 +16,7 @@ from ec2config import s3_sync_file, s3_cp
 
 def replay_trace(config):
     start_time = time.time()
-    replay_id = new_id()
+    replay_id = config['replay_id']
     sweep_dir = 'sweep'
     print "starting replay", replay_id
 
@@ -39,6 +37,7 @@ def replay_trace(config):
     if os.path.isfile(sim_log_fn):
         os.remove(sim_log_fn)
 
+    print "executing replaytrace.py"
     proc = Popen(['python', 'replaytrace.py',
             str(config['num_nodes']),
             str(config['num_workers_per_node']),
@@ -50,18 +49,23 @@ def replay_trace(config):
         ], stdout=PIPE, stderr=PIPE, env=env)
     (stdoutdata, stderrdata) = proc.communicate()
     returncode = proc.returncode
+    print "replaytrace.py finished with return code {}".format(returncode)
+
+    experiment_dir = sweep_dir + '/' + config['experiment_name']
+    if not os.path.exists(experiment_dir):
+        os.makedirs(experiment_dir)
 
     stdout_name = replay_id + '_stdout.gz'
     stderr_name = replay_id + '_stderr.gz'
-    stdout_fn = sweep_dir + '/' + stdout_name
-    stderr_fn = sweep_dir + '/' + stderr_name
+    stdout_fn = experiment_dir + '/' + stdout_name
+    stderr_fn = experiment_dir + '/' + stderr_name
     write_output(stdout_fn, stdoutdata)
     write_output(stderr_fn, stderrdata)
-    s3_cp(stdout_fn, ec2config.s3_bucket + '/sweep/' + stdout_name)
-    s3_cp(stderr_fn, ec2config.s3_bucket + '/sweep/' + stderr_name)
+    s3_cp(stdout_fn, ec2config.s3_bucket + '/' + experiment_dir + '/' + stdout_name)
+    s3_cp(stderr_fn, ec2config.s3_bucket + '/' + experiment_dir + '/' + stderr_name)
 
     log_name = replay_id + '_event_log.gz'
-    s3_cp(sim_log_fn, ec2config.s3_bucket + '/sweep/' + log_name)
+    s3_cp(sim_log_fn, ec2config.s3_bucket + '/' + experiment_dir + '/' + log_name)
 
     end_time = time.time()
 
@@ -79,16 +83,13 @@ def replay_trace(config):
     if 'env' in config_etc:
         config_etc['env'] = json.dumps(config_etc['env'])
 
-    return replay_id, config_etc
-
-def new_id():
-    return hashlib.sha1(str(uuid.uuid1())).hexdigest()[:8]
+    return config_etc
 
 def write_output(fn, text):
     with gzip.open(fn, 'wb') as f:
         f.write(text)
 
-def process_sweep(sleep_time, iteration_limit=None):
+def sweep_process(sleep_time, iteration_limit=None):
     conn = ec2config.sqs_connect()
     queue = conn.get_queue(ec2config.sqs_sweep_queue)
 
@@ -103,7 +104,13 @@ def process_sweep(sleep_time, iteration_limit=None):
                 config = json.loads(m.get_body())
                 print config
 
-                replay_id, config_etc = replay_trace(config)
+                replay_id = config['replay_id']
+                sdb_conn = ec2config.sdb_connect()
+                dom = sdb_conn.get_domain(ec2config.sdb_sweep_domain)
+                dom.put_attributes(replay_id + '-start', config)
+                sdb_conn.close()
+
+                config_etc = replay_trace(config)
 
                 sdb_conn = ec2config.sdb_connect()
                 dom = sdb_conn.get_domain(ec2config.sdb_sweep_domain)
@@ -133,4 +140,4 @@ if __name__ == '__main__':
         print 'setting sleep time to {}'.format(sleep_time)
     else:
         sleep_time = 30
-    process_sweep(sleep_time)
+    sweep_process(sleep_time)

@@ -4,12 +4,15 @@ import math
 import sys
 import ec2config
 import json
+import uuid
+import hashlib
 
 from boto.sqs.message import Message
 
 def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}):
     m = Message()
     s = json.dumps({
+            'replay_id': new_id(),
             'scheduler': scheduler,
             'num_nodes': int(num_nodes),
             'num_workers_per_node': 4,
@@ -25,14 +28,7 @@ def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}):
     queue.write(m)
 
 
-def queue_sweep(args):
-    min_nodes = int(args[1])
-    max_nodes = int(args[2])
-    nodes_step = int(args[3])
-    schedulers = str.split(args[4])
-    experiment_name = args[5]
-    tracefile = args[6]
-
+def sweep_queue(min_nodes, max_nodes, nodes_step, schedulers, experiment_name, tracefile):
     node_cts = range(min_nodes, max_nodes + 1, nodes_step)
 
     print 'Schedulers:', schedulers
@@ -46,13 +42,24 @@ def queue_sweep(args):
         for num_nodes in node_cts:
             enqueue(queue, num_nodes, scheduler, tracefile, experiment_name)
 
+def new_id():
+    return hashlib.sha1(str(uuid.uuid1())).hexdigest()[:8]
+
+
 def usage():
-    print 'Usage: queue_sweep.py min_nodes max_nodes node_step_mult schedulers experiment_name tracefile'
-    print '    e.g., queue_sweep.py 1 16 2 "trivial location_aware" my-experiment-1 trace.json'
+    print 'Usage: sweep_queue.py min_nodes max_nodes node_step_mult schedulers experiment_name tracefile'
+    print '    e.g., sweep_queue.py 1 16 2 "trivial location_aware" my-experiment-1 trace.json'
 
 if __name__ == '__main__':
     if len(sys.argv) >= 7:
-        queue_sweep(sys.argv)
+        min_nodes = int(args[1])
+        max_nodes = int(args[2])
+        nodes_step = int(args[3])
+        schedulers = str.split(args[4])
+        experiment_name = args[5]
+        tracefile = args[6]
+
+        sweep_queue(min_nodes, max_nodes, nodes_step, schedulers, experiment_name, tracefile)
     else:
         usage()
         sys.exit(-1)

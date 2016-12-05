@@ -3,7 +3,7 @@ import ec2config
 
 from sweep_queue import enqueue
 
-def queue_sweep_threshold(schedulers, t1l_range, experiment_name, tracefile):
+def sweep_threshold_queue(schedulers, t1l_range, experiment_name, tracefile):
     num_nodes = 4
 
     conn = ec2config.sqs_connect()
@@ -25,7 +25,7 @@ if __name__ == '__main__':
         schedulers = str.split(sys.argv[1])
         experiment_name = sys.argv[2]
         tracefile = sys.argv[3]
-        queue_sweep_threshold(schedulers, range(0,16), experiment_name, tracefile)
+        sweep_threshold_queue(schedulers, range(0,16), experiment_name, tracefile)
     else:
         usage()
         sys.exit(-1)

@@ -248,6 +248,59 @@ class SummaryStats(object):
         return str(self.stats)
 
 
+class DistributionStats(NoopLogger):
+    def __init__(self, system_time):
+        self._system_time = system_time
+        self._submit_to_phase0_distribution = self.DistributionTimer('submit to phase0', system_time)
+        self.completed_successfully = None
+        self.stats = None
+
+    class DistributionTimer():
+        def __init__(self, name, system_time):
+            self._name = name
+            self._system_time = system_time
+
+            self._start_times = {}
+
+            self._times = []
+
+        def start(self, key):
+            if key in self._start_times.keys():
+                raise RuntimeError('duplicate start event on timer \'{}\' for key {}'.format(self._name, key))
+            self._start_times[key] = self._system_time.get_time()
+
+        def finish(self, key):
+            elapsed_time = self._system_time.get_time() - self._start_times[key]
+            del self._start_times[key]
+            self._times.append(elapsed_time)
+
+        def get_times(self):
+            if self._start_times:
+                raise RuntimeError("Have unfinished timers")
+            return self._times
+
+    def task_submitted(self, task_id, node_id):
+        self._submit_to_phase0_distribution.start(task_id)
+
+    def task_phase_started(self, task_id, phase_id, node_id):
+        if phase_id == 0:
+            self._submit_to_phase0_distribution.finish(task_id)
+
+    def get_submit_to_phase0_distribution(self):
+        return self._submit_to_phase0_distribution.get_times()
+
+    def job_ended(self):
+        stats = {}
+        stats['submit_to_phase0_time'] = self._submit_to_phase0_distribution.get_times()
+        self.completed_successfully = True
+        self.stats = stats
+
+    def __str__(self):
+        if not self.completed_successfully:
+            return str(self.err)
+        return str(self.stats)
+
+
 class StatsLogger(SummaryStats):
     def __init__(self, system_time):
         SummaryStats.__init__(self, system_time)

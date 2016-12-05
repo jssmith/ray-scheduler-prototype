@@ -2,21 +2,26 @@ import sys
 import gzip
 import json
 
-from statslogging import SummaryStats
+from statslogging import SummaryStats, DistributionStats
 from helpers import setup_logging
 
 def usage():
     print "Usage: analyze_basic.py log.gz"
 
 def analyze_basic(fn):
+    return _analyze(fn, SummaryStats, True)
 
+def analyze_distn(fn):
+    return _analyze(fn, DistributionStats)
+
+def _analyze(fn, stats, print_stats=False):
     def load_log(fn):
         with gzip.open(fn, 'rb') as f:
             return json.load(f)
     events = load_log(fn)
 
     system_time = SystemTime()
-    stats = SummaryStats(system_time)
+    stats = stats(system_time)
 
     for event in events:
         system_time.set_time(event['timestamp'])
@@ -24,9 +29,9 @@ def analyze_basic(fn):
 
     stats.job_ended()
 
-    print stats
+    if print_stats:
+        print stats
     return stats.stats
-
 
 class SystemTime(object):
     def __init__(self):
@@ -47,3 +52,4 @@ if __name__ == '__main__':
         sys.exit(1)
     setup_logging()
     analyze_basic(sys.argv[1])
+    analyze_distn(sys.argv[1])

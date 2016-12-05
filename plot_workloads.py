@@ -72,7 +72,7 @@ def drawplots_generic(experiment_name,
                     series_y.append(None)
             sp.plot(series_x, series_y, c=scheduler_colors[scheduler], label=scheduler)
 
-        sp.set_xlabel('Number of Nodes')
+        sp.set_xlabel(x_variable_description)
         sp.set_ylabel(y_variable_description)
         if title is not None:
             sp.set_title(title)

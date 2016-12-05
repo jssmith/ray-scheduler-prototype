@@ -29,12 +29,15 @@ def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_des
 def drawplots_generic(experiment_name,
     x_variable_fn, x_variable_name, x_variable_description,
     y_variable_fn, y_variable_name, y_variable_description,
-    filter_fn=lambda x: True, title=None, output_filename=None):
+    filter_fn=lambda x: True, title=None, output_filename=None,
+    fig_dpi=300):
     json_filename = 'sweep-summaries/{}.json.gz'.format(experiment_name)
     with gzip.open(json_filename, 'rb') as f:
         plot_data = json.load(f)
 
     require_dir('figs')
+
+    plt.rcParams.update({'font.size': 6})
 
     def unique_values(data, fn):
         return sorted(set(map(fn, data)))
@@ -50,14 +53,19 @@ def drawplots_generic(experiment_name,
     for scheduler in all_schedulers:
         scheduler_colors[scheduler] = colors.next()
 
+    markers = itertools.cycle(('o', '*', '^', '+', 'x', '.'))
+    scheduler_markers = {}
+    for scheduler in all_schedulers:
+        scheduler_markers[scheduler] = markers.next()
+
     plot_data = filter(filter_fn, plot_data)
 
     all_wokloads = unique_values(plot_data, lambda x: x['tracefile'])
     index = 0
     for workload in all_wokloads:
         workload_name = workload.replace('.json','').replace('.gz','').replace('.pdf','').replace('/','-').replace('traces/sweep/','')
-        fig = plt.figure(figsize=(16,8), dpi=100)
-        sp = fig.add_subplot(1, 1, 1)
+        fig = plt.figure(figsize=(4,3), dpi=fig_dpi)
+        sp = fig.add_subplot(111)
         workload_data = filter(lambda x: x['tracefile'] == workload, plot_data)
         for scheduler in unique_values(workload_data, lambda x: x['scheduler']):
             series_map = {}
@@ -70,10 +78,10 @@ def drawplots_generic(experiment_name,
                     series_y.append(series_map[x_value])
                 else:
                     series_y.append(None)
-            sp.plot(series_x, series_y, c=scheduler_colors[scheduler], label=scheduler)
+            sp.plot(series_x, series_y, c=scheduler_colors[scheduler], marker=scheduler_markers[scheduler], label=scheduler)
 
-        sp.set_xlabel(x_variable_description)
-        sp.set_ylabel(y_variable_description)
+        sp.set_xlabel(x_variable_description, labelpad=2)
+        sp.set_ylabel(y_variable_description, labelpad=2)
         if title is not None:
             sp.set_title(title)
         else:
@@ -88,7 +96,7 @@ def drawplots_generic(experiment_name,
             else:
                 fig_fn = '{}-{}'.format(index, output_filename)
         print 'output to', fig_fn
-        fig.savefig(fig_fn)
+        fig.savefig(fig_fn, dpi=fig_dpi)
         plt.close(fig)
         index += 1
 

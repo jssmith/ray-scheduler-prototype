@@ -158,7 +158,7 @@ def _plot(plot_data,
             sp.set_title(title)
         else:
             sp.set_title('Workload {}'.format(workload_name))
-        sp.legend(shadow=True, fancybox=True, prop={'size':8})
+        sp.legend(shadow=True, fancybox=True, prop={'size':6})
         if extra_fig_settings:
             extra_fig_settings(fig, sp)
         if output_filename is None:

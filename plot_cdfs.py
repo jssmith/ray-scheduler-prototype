@@ -48,7 +48,7 @@ def build_submit_phase0_cdf_multi_scheduler(workload_name, scheduler_inputs, out
 def plot_cdf_multi_scheduler(all_data,
     x_variable_description,
     y_variable_description,
-    titile,
+    title,
     output_filename):
     fig_dpi = 300
     plt.rcParams.update({'font.size': 6})
@@ -58,10 +58,15 @@ def plot_cdf_multi_scheduler(all_data,
     for scheduler, data in all_data:
         sorted_data = np.sort(np.asarray(data['submit_to_phase0_time']))
         yvals=np.arange(len(sorted_data))/float(len(sorted_data)-1)
-        ax.plot(sorted_data,yvals, c=std_scheduler_colors[scheduler], label=scheduler)
+        if scheduler == 'trivial':
+            linewidth = 4.0
+        else:
+            linewidth = 1.0
+        ax.plot(sorted_data,yvals, c=std_scheduler_colors[scheduler], label=scheduler, linewidth=linewidth)
 
     ax.set_xlabel(x_variable_description, labelpad=2)
     ax.set_ylabel(y_variable_description, labelpad=2)
+    ax.set_title(title)
     ax.legend(shadow=True, fancybox=True, prop={'size':6})
     print 'saving cdf to figure {}'.format(output_filename)
     fig.savefig(output_filename, dpi=fig_dpi)

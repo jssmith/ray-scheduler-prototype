@@ -12,21 +12,28 @@ import itertools
 def usage():
     print "Usage: plot_workloads_nodes.py experiment_name"
 
-std_scheduler_colors = {
-    u'transfer_aware': [ 0.5,  0. ,  1. ,  1. ],
-    u'trivial_threshold_local': [  1.00000000e+00,   1.22464680e-16,   6.12323400e-17,1.00000000e+00],
-    u'transfer_aware_threshold_local': [ 0.3       ,  0.95105652,  0.80901699,  1.        ],
-    u'trivial_local': [ 1.        ,  0.58778525,  0.30901699,  1.        ],
-    u'trivial': [ 0.7       ,  0.95105652,  0.58778525,  1.        ],
-    u'transfer_aware_local': [ 0.1       ,  0.58778525,  0.95105652,  1.        ]}
 
-std_scheduler_markers = {
-    u'transfer_aware': 'o',
-    u'trivial_threshold_local': '.',
-    u'transfer_aware_threshold_local': '^',
-    u'trivial_local': 'x',
-    u'trivial': '+',
-    u'transfer_aware_local': '*'}
+std_scheduler_colors = {u'transfer_aware': [ 0.25294118,  0.92563766,  0.83018403,  1.        ],
+    u'trivial_threshold_local': [  1.00000000e+00,   1.22464680e-16,   6.12323400e-17, 1.00000000e+00],
+    u'location_aware_local': [ 0.24901961,  0.38410575,  0.98063477,  1.        ],
+    u'location_aware': [ 0.5,  0. ,  1. ,  1. ],
+    u'location_aware_threshold_local': [ 0.00196078,  0.70928131,  0.92328911,  1.        ],
+    u'transfer_aware_threshold_local': [ 0.75490196,  0.92090552,  0.55236497,  1.        ],
+    u'trivial_local': [ 1.        ,  0.37270199,  0.18980109,  1.        ],
+    u'trivial': [ 1.        ,  0.70054304,  0.37841105,  1.        ],
+    u'transfer_aware_local': [ 0.50392157,  0.99998103,  0.70492555,  1.        ]
+}
+
+
+std_scheduler_markers = {u'transfer_aware': '+',
+    u'trivial_threshold_local': 'o',
+    u'location_aware_local': '*',
+    u'location_aware': 'o',
+    u'location_aware_threshold_local': '^',
+    u'transfer_aware_threshold_local': '.',
+    u'trivial_local': '>',
+    u'trivial': '<',
+    u'transfer_aware_local': 'x'}
 
 def require_dir(path):
     if not os.path.exists(path):
@@ -50,6 +57,7 @@ def drawplots_relative(experiment_name,
     output_filename,
     fig_dpi=300):
     json_filename = 'sweep-summaries/{}.json.gz'.format(experiment_name)
+    print 'read from {}'.format(json_filename)
     with gzip.open(json_filename, 'rb') as f:
         plot_data = json.load(f)
 
@@ -91,6 +99,7 @@ def drawplots_generic(experiment_name,
     filter_fn=lambda x: True, title=None, output_filename=None,
     fig_dpi=300):
     json_filename = 'sweep-summaries/{}.json.gz'.format(experiment_name)
+    print 'read from {}'.format(json_filename)
     with gzip.open(json_filename, 'rb') as f:
         plot_data = json.load(f)
 
@@ -109,10 +118,13 @@ def drawplots_generic(experiment_name,
     for scheduler in all_schedulers:
         scheduler_colors[scheduler] = colors.next()
 
-    markers = itertools.cycle(('o', '*', '^', '+', 'x', '.'))
+    markers = itertools.cycle(('o', '*', '^', '+', 'x', '.', '<', '>'))
     scheduler_markers = {}
     for scheduler in all_schedulers:
         scheduler_markers[scheduler] = markers.next()
+
+    print scheduler_colors
+    print scheduler_markers
 
     _plot(filter(filter_fn, plot_data),
         x_variable_fn, x_variable_name, x_variable_description,

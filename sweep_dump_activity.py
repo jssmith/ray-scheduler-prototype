@@ -7,7 +7,7 @@ def usage():
 def dump_activity(experiment_name):
     sdb_conn = ec2config.sdb_connect()
     dom = sdb_conn.get_domain(ec2config.sdb_sweep_domain)
-    query = "select * from `{}` where end_time > '1480000000' and (experiment_name='{}' or comment='{}') order by end_time desc".format(
+    query = "select * from `{}` where experiment_name like '{}%' and hostname ='50aaaa988e94'".format(
         ec2config.sdb_sweep_domain, experiment_name, experiment_name)
     rs = dom.select(query)
     end_times = []
@@ -16,10 +16,24 @@ def dump_activity(experiment_name):
         print r.name, r
     sdb_conn.close()
 
+def agg_activity(experiment_name):
+
+    sdb_conn = ec2config.sdb_connect()
+    dom = sdb_conn.get_domain(ec2config.sdb_sweep_domain)
+    query = "select * from `{}` where experiment_name like '{}%' and hostname ='50aaaa988e94'".format(
+        ec2config.sdb_sweep_domain, experiment_name, experiment_name)
+    rs = dom.select(query)
+    end_times = []
+    elapsed_times = []
+    for r in reversed(list(rs)):
+        print r.name, r
+    sdb_conn.close()
+
+
 def measure_activity(experiment_name):
     sdb_conn = ec2config.sdb_connect()
     dom = sdb_conn.get_domain(ec2config.sdb_sweep_domain)
-    query = "select start_time, end_time from `{}` where end_time > '1480000000' and (experiment_name='{}' or comment='{}') order by end_time desc".format(
+    query = "select start_time, end_time from `{}` where end_time > '1480000000' and experiment_name like '{}%' order by end_time desc".format(
         ec2config.sdb_sweep_domain, experiment_name, experiment_name)
     rs = dom.select(query)
     end_times = []
@@ -43,3 +57,4 @@ if __name__ == '__main__':
     experiment_name = sys.argv[1]
     dump_activity(experiment_name)
     measure_activity(experiment_name)
+    # agg_activity(experiment_name)

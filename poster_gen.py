@@ -1,7 +1,7 @@
 from sweep_queue import sweep_queue
 from sweep_threshold_queue import sweep_threshold_queue
 
-version_prefix = 'dec5d'
+version_prefix = 'dec6a'
 
 min_nodes = 3
 max_nodes = 20
@@ -52,5 +52,5 @@ def queue_threshold_sweeps():
     sweep_threshold_queue(threshold_schedulers, t1l_range, experiment_name_t1l, trace_single_rlpong)
 
 if __name__ == '__main__':
-    # queue_basic_sweeps()
+    queue_basic_sweeps()
     queue_threshold_sweeps()

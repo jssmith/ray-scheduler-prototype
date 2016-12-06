@@ -731,8 +731,10 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._scheduled_tasks = []
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
-        self.threshold1l = os.getenv('RAY_SCHED_THRESHOLD1L', 2)
-        self.threshold1h = os.getenv('RAY_SCHED_THRESHOLD1H', 8)
+        #self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) / float(self._node_runtime.num_nodes)
+        self.threshold1l =  float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) * self._node_runtime.num_workers / (self._node_runtime.num_nodes)
+        #self.threshold1h = float(os.getenv('RAY_SCHED_THRESHOLD1H', 8)) / float(self._node_runtime.num_nodes)
+        self.threshold1h = self.threshold1l * 4
         self.threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 5)
         #print "threshold scheduler: threshold1l is {}".format(self.threshold1l)
         #print "threshold scheduler: threshold1h is {}".format(self.threshold1h)

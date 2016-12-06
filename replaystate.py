@@ -230,7 +230,7 @@ class ObjectDescription():
 
 
 class NodeRuntime():
-    def __init__(self, event_simulation, object_store, logger, computation, node_id, num_workers):
+    def __init__(self, event_simulation, object_store, logger, computation, node_id, num_workers, num_nodes):
         self._pylogger = TimestampedLogger(__name__+'.NodeRuntime', event_simulation)
         self._event_simulation = event_simulation
         self._object_store = object_store
@@ -239,6 +239,7 @@ class NodeRuntime():
         self._update_handlers = []
         self.num_workers = num_workers
         self.node_id = node_id
+        self.num_nodes = num_nodes
         self.num_workers_executing = 0
 
         self._time_buffer_size = 10

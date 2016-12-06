@@ -49,7 +49,7 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
     for node_id in range(0, num_nodes):
         local_runtime = replaystate.NodeRuntime(event_simulation, object_store,
                                                 logger, computation, node_id,
-                                                num_workers_per_node)
+                                                num_workers_per_node, num_nodes)
         local_event_loop = replaystate.EventLoop(event_simulation)
         local_nodes[node_id] = (local_runtime, local_event_loop)
         local_runtimes[node_id] = local_runtime

@@ -12,6 +12,22 @@ import itertools
 def usage():
     print "Usage: plot_workloads_nodes.py experiment_name"
 
+std_scheduler_colors = {
+    u'transfer_aware': [ 0.5,  0. ,  1. ,  1. ],
+    u'trivial_threshold_local': [  1.00000000e+00,   1.22464680e-16,   6.12323400e-17,1.00000000e+00],
+    u'transfer_aware_threshold_local': [ 0.3       ,  0.95105652,  0.80901699,  1.        ],
+    u'trivial_local': [ 1.        ,  0.58778525,  0.30901699,  1.        ],
+    u'trivial': [ 0.7       ,  0.95105652,  0.58778525,  1.        ],
+    u'transfer_aware_local': [ 0.1       ,  0.58778525,  0.95105652,  1.        ]}
+
+std_scheduler_markers = {
+    u'transfer_aware': 'o',
+    u'trivial_threshold_local': '.',
+    u'transfer_aware_threshold_local': '^',
+    u'trivial_local': 'x',
+    u'trivial': '+',
+    u'transfer_aware_local': '*'}
+
 def require_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
@@ -26,6 +42,49 @@ def drawplots_fn(experiment_name, y_variable_fn, y_variable_name, y_variable_des
         y_variable_fn, y_variable_name, y_variable_description,
         filter_fn, title, output_filename)
 
+def drawplots_relative(experiment_name,
+    x_variable_fn, x_variable_name, x_variable_description,
+    ref_scheduler,
+    compare_schedulers,
+    title,
+    output_filename,
+    fig_dpi=300):
+    json_filename = 'sweep-summaries/{}.json.gz'.format(experiment_name)
+    with gzip.open(json_filename, 'rb') as f:
+        plot_data = json.load(f)
+
+    for x in plot_data:
+        x['num_nodes'] = int(x['num_nodes'])
+
+    ref_data_dict = {}
+    for obs in filter(lambda x: x['scheduler'] == ref_scheduler, plot_data):
+        ref_data_dict[x_variable_fn(obs)] = obs
+
+    series_x = _unique_values(plot_data, x_variable_fn)
+
+    include_plot_data = filter(lambda x: x['scheduler'] in compare_schedulers, plot_data)
+
+    def y_variable_fn(obs):
+        x_val = x_variable_fn(obs)
+        if x_val in ref_data_dict:
+            return float(obs['job_completion_time']) / float(ref_data_dict[x_val]['job_completion_time']) 
+        else:
+            return None
+
+    def extra_fig_settings(fig, ax):
+        ax.set_ylim([0, 5])
+
+    _plot(include_plot_data,
+        x_variable_fn, x_variable_name, x_variable_description,
+        y_variable_fn,
+        'job_completion_time_relative',
+        'Relative Job Completion Time',
+        series_x, std_scheduler_colors, std_scheduler_markers,
+        title=title,
+        output_filename=output_filename,
+        fig_dpi=fig_dpi, extra_fig_settings=extra_fig_settings)
+
+
 def drawplots_generic(experiment_name,
     x_variable_fn, x_variable_name, x_variable_description,
     y_variable_fn, y_variable_name, y_variable_description,
@@ -39,14 +98,11 @@ def drawplots_generic(experiment_name,
 
     plt.rcParams.update({'font.size': 6})
 
-    def unique_values(data, fn):
-        return sorted(set(map(fn, data)))
-
     for x in plot_data:
         x['num_nodes'] = int(x['num_nodes'])
 
-    all_schedulers = unique_values(plot_data, lambda x: x['scheduler'])
-    series_x = unique_values(plot_data, x_variable_fn)
+    all_schedulers = _unique_values(plot_data, lambda x: x['scheduler'])
+    series_x = _unique_values(plot_data, x_variable_fn)
 
     colors = itertools.cycle(cm.rainbow(np.linspace(0, 1, len(all_schedulers))))
     scheduler_colors = {}
@@ -58,16 +114,32 @@ def drawplots_generic(experiment_name,
     for scheduler in all_schedulers:
         scheduler_markers[scheduler] = markers.next()
 
-    plot_data = filter(filter_fn, plot_data)
+    _plot(filter(filter_fn, plot_data),
+        x_variable_fn, x_variable_name, x_variable_description,
+        y_variable_fn, y_variable_name, y_variable_description,
+        series_x, scheduler_colors, scheduler_markers,
+        title=title, output_filename=output_filename,
+        fig_dpi=fig_dpi)
 
-    all_wokloads = unique_values(plot_data, lambda x: x['tracefile'])
+def _unique_values(data, fn):
+    return sorted(set(map(fn, data)))
+
+def _plot(plot_data,
+    x_variable_fn, x_variable_name, x_variable_description,
+    y_variable_fn, y_variable_name, y_variable_description,
+    series_x, scheduler_colors, scheduler_markers,
+    title=None, output_filename=None, fig_dpi=300,
+    extra_fig_settings=None):
+
+    all_wokloads = _unique_values(plot_data, lambda x: x['tracefile'])
     index = 0
+    workload_figs = {}
     for workload in all_wokloads:
         workload_name = workload.replace('.json','').replace('.gz','').replace('.pdf','').replace('/','-').replace('traces/sweep/','')
         fig = plt.figure(figsize=(4,3), dpi=fig_dpi)
         sp = fig.add_subplot(111)
         workload_data = filter(lambda x: x['tracefile'] == workload, plot_data)
-        for scheduler in unique_values(workload_data, lambda x: x['scheduler']):
+        for scheduler in _unique_values(workload_data, lambda x: x['scheduler']):
             series_map = {}
             for data in filter(lambda x: x['scheduler'] == scheduler, workload_data):
                 series_map[x_variable_fn(data)] = y_variable_fn(data)
@@ -87,6 +159,8 @@ def drawplots_generic(experiment_name,
         else:
             sp.set_title('Workload {}'.format(workload_name))
         sp.legend(shadow=True, fancybox=True, prop={'size':8})
+        if extra_fig_settings:
+            extra_fig_settings(fig, sp)
         if output_filename is None:
             fig_fn = 'figs/{}/fig-{}-{}-{}.pdf'.format(experiment_name, workload_name, y_variable_name, x_variable_name)
             require_dir('figs/{}'.format(experiment_name))
@@ -96,6 +170,7 @@ def drawplots_generic(experiment_name,
             else:
                 fig_fn = '{}-{}'.format(index, output_filename)
         print 'output to', fig_fn
+        workload_figs[workload] = fig
         fig.savefig(fig_fn, dpi=fig_dpi)
         plt.close(fig)
         index += 1

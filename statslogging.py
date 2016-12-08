@@ -79,6 +79,35 @@ class PrintingLogger(object):
         self._pylogger.debug('end of job')
 
 
+class ActivationTracker(object):
+    def __init__(self):
+        self._objects = set()
+        self._object_waiting_tasks = defaultdict(list)
+        self._task_waiting_objects = {}
+
+    def task_submitted(self, task_id, dependencies):
+        objects_needed = []
+        for object_id in dependencies:
+            if object_id in self._objects:
+                self._object_waiting_tasks[object_id].append(task_id)
+                objects_needed.append(object_id)
+        if objects_needed:
+            self._task_waiting_objects[task_id] = objects_needed
+        return not objects_needed
+
+    def object_created(self, object_id):
+        self._objects.add(object_id)
+        activated = []
+        for task_id in self._object_waiting_tasks[object_id]:
+            objects_needed = self._task_waiting_objects[task_id]
+            objects_needed.remove(object_id)
+            if not objects_needed:
+                activated.append(task_id)
+                del self._task_waiting_objects[task_id]
+        del self._object_waiting_tasks[object_id]
+        return activated
+
+
 class SummaryStats(object):
     def __init__(self, system_time):
         self._system_time = system_time
@@ -95,6 +124,10 @@ class SummaryStats(object):
 
         self._submit_to_schedule_time = 0
         self._submit_to_phase0_time = 0
+        self._submit_to_activation_time = 0
+
+        self._activation_to_schedule_time = 0
+        self._activation_to_phase0_time = 0
 
         self._num_object_transfers_started = 0
         self._num_object_transfers_finished = 0
@@ -104,10 +137,15 @@ class SummaryStats(object):
         self._num_objects_created = 0
         self._object_created_size = 0
 
+        self._activation_tracker = ActivationTracker()
+
         self._task_timer = self.Timer('task execution', self._system_time)
         self._task_phase_timer = self.Timer('task phase execution', self._system_time)
         self._submit_to_schedule_timer = self.Timer('submit to schedule', self._system_time)
         self._submit_to_phase0_timer = self.Timer('submit to phase0', self._system_time)
+        self._submit_to_activation_timer = self.Timer('submit to activation', self._system_time)
+        self._activation_to_schedule_timer = self.Timer('activation to schedule', self._system_time)
+        self._activation_to_phase0_timer = self.Timer('activation to phase0', self._system_time)
         self._object_transfer_timer = self.Timer('object transfer', self._system_time)
         self._node_worker_tracker = self.NodeWorkerTracker()
 
@@ -160,16 +198,25 @@ class SummaryStats(object):
             if self._node_tasks_active[node_id] == 0:
                 self._nodes_active -= 1
 
+    def _activated(self, task_id):
+        self._submit_to_activation_time += self._submit_to_activation_timer.finish(task_id)
+        self._activation_to_schedule_timer.start(task_id)
+        self._activation_to_phase0_timer.start(task_id)
+
     def task_submitted(self, task_id, node_id, dependencies):
         self._num_tasks_submitted += 1
         self._submit_to_schedule_timer.start(task_id)
         self._submit_to_phase0_timer.start(task_id)
+        self._submit_to_activation_timer.start(task_id)
+        if self._activation_tracker.task_submitted(task_id, dependencies):
+            self._activated(task_id)
 
     def task_scheduled(self, task_id, node_id, is_scheduled_locally):
         self._num_tasks_scheduled += 1
         if is_scheduled_locally:
             self._num_staks_scheduled_locally += 1
         self._submit_to_schedule_time += self._submit_to_schedule_timer.finish(task_id)
+        self._activation_to_schedule_time += self._activation_to_schedule_timer.finish(task_id)
 
     def task_started(self, task_id, node_id):
         self._num_tasks_started += 1
@@ -186,6 +233,7 @@ class SummaryStats(object):
         self._task_phase_timer.start((task_id, phase_id, node_id))
         if phase_id == 0:
             self._submit_to_phase0_time += self._submit_to_phase0_timer.finish(task_id)
+            self._activation_to_phase0_time += self._activation_to_phase0_timer.finish(task_id)
 
     def task_phase_finished(self, task_id, phase_id, node_id):
         self._task_phase_execution_time += self._task_phase_timer.finish((task_id, phase_id, node_id))
@@ -193,6 +241,8 @@ class SummaryStats(object):
     def object_created(self, object_id, node_id, object_size):
         self._num_objects_created += 1
         self._object_created_size += object_size
+        for task_id in self._activation_tracker.object_created(object_id):
+            self._activated(task_id)
 
     def object_transfer_started(self, object_id, object_size, src_node_id, dst_node_id):
         self._num_object_transfers_started += 1
@@ -238,6 +288,9 @@ class SummaryStats(object):
         stats['num_objects_created'] = self._num_objects_created
         stats['submit_to_schedule_time'] = self._submit_to_schedule_time
         stats['submit_to_phase0_time'] = self._submit_to_phase0_time
+        stats['submit_to_activation_time'] = self._submit_to_activation_time
+        stats['activation_to_schedule_time'] = self._activation_to_schedule_time
+        stats['activation_to_phase0_time'] = self._activation_to_phase0_time
 
         self.completed_successfully = True
         self.stats = stats
@@ -248,10 +301,17 @@ class SummaryStats(object):
         return str(self.stats)
 
 
-class DistributionStats(NoopLogger):
+class DetailedStats(NoopLogger):
     def __init__(self, system_time):
         self._system_time = system_time
+
+        self._activation_tracker = ActivationTracker()
+
         self._submit_to_phase0_distribution = self.DistributionTimer('submit to phase0', system_time)
+
+        self._ts_workers_active = self.TimeSeries('workers active', system_time, 0, lambda x, y: max(x, y))
+        self._ts_runnable_tasks = self.TimeSeries('runnable tasks', system_time)
+
         self.completed_successfully = None
         self.stats = None
 
@@ -279,12 +339,55 @@ class DistributionStats(NoopLogger):
                 raise RuntimeError("Have unfinished timers")
             return self._times
 
+    class TimeSeries(object):
+        def __init__(self, name, system_time, initial_value = 0, duplicate_merge=lambda x, y: y):
+            self._name = name
+            self._system_time = system_time
+            self._prev_value = initial_value
+            self._prev_timestamp = None
+            self.values = []
+            self._duplicate_merge = duplicate_merge
+            self.update(lambda x: initial_value)
+
+        def update(self, fn):
+            new_value = fn(self._prev_value)
+            timestamp = self._system_time.get_time()
+            new_value_plot = new_value
+            if timestamp == self._prev_timestamp:
+                self.values.pop()
+                new_value_plot = self._duplicate_merge(self._prev_value, new_value)
+            self.values.append((timestamp, new_value_plot))
+            self._prev_value = new_value
+            self._prev_timestamp = timestamp
+
+        def increment(self):
+            self.update(lambda x: x + 1)
+
+        def decrement(self):
+            self.update(lambda x: x - 1)
+
+    def _activated(self, task_id):
+        self._ts_runnable_tasks.increment()
+
     def task_submitted(self, task_id, node_id, dependencies):
         self._submit_to_phase0_distribution.start(task_id)
+        if self._activation_tracker.task_submitted(task_id, dependencies):
+            self._activated(task_id)
 
     def task_phase_started(self, task_id, phase_id, node_id):
         if phase_id == 0:
             self._submit_to_phase0_distribution.finish(task_id)
+
+    def object_created(self, object_id, node_id, object_size):
+        for task_id in self._activation_tracker.object_created(object_id):
+            self._activated(task_id)
+
+    def task_started(self, task_id, node_id):
+        self._ts_workers_active.increment()
+        self._ts_runnable_tasks.decrement()
+
+    def task_finished(self, task_id, node_id):
+        self._ts_workers_active.decrement()
 
     def get_submit_to_phase0_distribution(self):
         return self._submit_to_phase0_distribution.get_times()
@@ -292,6 +395,11 @@ class DistributionStats(NoopLogger):
     def job_ended(self):
         stats = {}
         stats['submit_to_phase0_time'] = self._submit_to_phase0_distribution.get_times()
+
+        stats['workers_active_timeseries'] = self._ts_workers_active.values
+        stats['runnable_tasks_timeseries'] = self._ts_runnable_tasks.values
+        stats['job_completion_time'] = self._system_time.get_time()
+
         self.completed_successfully = True
         self.stats = stats
 

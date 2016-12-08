@@ -2,7 +2,7 @@ import sys
 import gzip
 import json
 
-from statslogging import SummaryStats, DistributionStats
+from statslogging import SummaryStats, DetailedStats
 from helpers import setup_logging
 
 def usage():
@@ -12,7 +12,10 @@ def analyze_basic(fn):
     return _analyze(fn, SummaryStats, True)
 
 def analyze_distn(fn):
-    return _analyze(fn, DistributionStats)
+    return _analyze(fn, DetailedStats)
+
+def analyze_timeseries(fn):
+    return _analyze(fn, TimeSeriesStats)
 
 def _analyze(fn, stats, print_stats=False):
     def load_log(fn):

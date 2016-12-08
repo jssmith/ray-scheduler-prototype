@@ -1,7 +1,7 @@
 import sys
 import ec2config
 
-import plot_cdfs
+import sim_plots
 
 from collections import defaultdict
 

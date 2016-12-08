@@ -82,14 +82,14 @@ class PrintingLogger(object):
 
 class ActivationTracker(object):
     def __init__(self):
-        self._objects = set()
+        self._objects_available = set()
         self._object_waiting_tasks = defaultdict(list)
         self._task_waiting_objects = {}
 
     def task_submitted(self, task_id, dependencies):
         objects_needed = []
         for object_id in dependencies:
-            if object_id in self._objects:
+            if not object_id in self._objects_available:
                 self._object_waiting_tasks[object_id].append(task_id)
                 objects_needed.append(object_id)
         if objects_needed:
@@ -97,7 +97,7 @@ class ActivationTracker(object):
         return not objects_needed
 
     def object_created(self, object_id):
-        self._objects.add(object_id)
+        self._objects_available.add(object_id)
         activated = []
         for task_id in self._object_waiting_tasks[object_id]:
             objects_needed = self._task_waiting_objects[task_id]
@@ -163,14 +163,17 @@ class SummaryStats(object):
             self._start_times = {}
 
         def start(self, key):
-            if key in self._start_times.keys():
+            if key in self._start_times:
                 raise RuntimeError('duplicate start event on timer \'{}\' for key {}'.format(self._name, key))
             self._start_times[key] = self._system_time.get_time()
 
         def finish(self, key):
-            elapsed_time = self._system_time.get_time() - self._start_times[key]
-            del self._start_times[key]
-            return elapsed_time
+            if not key in self._start_times:
+                return -1
+            else:
+                elapsed_time = self._system_time.get_time() - self._start_times[key]
+                del self._start_times[key]
+                return elapsed_time
 
     class NodeWorkerTracker():
         def __init__(self):

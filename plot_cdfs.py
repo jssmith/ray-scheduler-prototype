@@ -53,9 +53,13 @@ def plot_cdf_multi_scheduler(all_data,
     fig_dpi = 300
     plt.rcParams.update({'font.size': 6})
 
+    scheduler_plot_order = {
+        'trivial': 1,
+        'location_aware': 2,
+        'transfer_aware': 3}
     fig = plt.figure(figsize=(4,3), dpi=fig_dpi)
     ax = fig.add_subplot(111)
-    for scheduler, data in all_data:
+    for scheduler, data in sorted(all_data, key=lambda (s, d): scheduler_plot_order[s]):
         sorted_data = np.sort(np.asarray(data['submit_to_phase0_time']))
         yvals=np.arange(len(sorted_data))/float(len(sorted_data)-1)
         if scheduler == 'trivial':

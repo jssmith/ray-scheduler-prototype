@@ -37,7 +37,7 @@ def gen_cdfs(experiment_name):
                 to_plot[workload].append((scheduler, 'sweep/' + r['experiment_name'] + '/' + log_fn))
     
     print to_plot
-    for workload, data in to_plot.items():
+    for workload, data in sorted(to_plot.items()):
         plot_cdfs.build_submit_phase0_cdf_multi_scheduler(workload, data,
             'poster_figs/{}-cdf'.format(workload))
 

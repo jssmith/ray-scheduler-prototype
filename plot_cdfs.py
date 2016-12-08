@@ -18,14 +18,27 @@ def plot_analysis(log_filename, output_filename):
             'Scheduling Delay [seconds from submit to unblocked execution]',
             'Fraction of Tasks',
             pdf)
-        plot_timeseries(stats['workers_active_timeseries'],
-            ts_range,
-            'Workers Active',
+        plot_cdf(stats['task_time'],
+            'Task Duration [seconds]',
+            'Fraction of Tasks',
             pdf)
         plot_timeseries(stats['runnable_tasks_timeseries'],
             ts_range,
             'Runnable Tasks',
             pdf)
+        plot_timeseries(stats['workers_active_timeseries'],
+            ts_range,
+            'Workers Active',
+            pdf)
+        plot_timeseries(stats['workers_blocked_timeseries'],
+            ts_range,
+            'Workers Blocked',
+            pdf)
+        plot_timeseries(stats['object_transfers_active_timeseries'],
+            ts_range,
+            'Object Transfers Active',
+            pdf)
+        plot_worker_activity(stats['worker_activity'], pdf)
 
 def plot_cdf(data,
     x_variable_description,
@@ -59,6 +72,56 @@ def plot_timeseries(data,
     ax.set_xlabel('Time [seconds]')
     ax.set_ylabel(y_variable_description)
     plt.xlim(x_range)
+    pdf.savefig(fig)
+    plt.close(fig)
+
+def plot_worker_activity(data, pdf):
+    workers = sorted(data.keys())
+
+    width = .8
+    padding = .2
+
+    baseline = padding / 2
+
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    for worker in workers:
+        last_started = None
+        last_running = None
+        last_blocked = None
+        active_ranges = []
+        running_ranges = []
+        for (timestamp, (task_id, status)) in data[worker]:
+            if status == 'initialized':
+                last_started = timestamp
+                last_running = None
+                last_blocked = None
+            if status == 'freed':
+                active_ranges.append((last_started, timestamp - last_started))
+                last_started = None
+            if status == 'running':
+                if last_blocked == timestamp:
+                    (last_running, _) = running_ranges.pop()
+                else:
+                    last_running = timestamp
+            if status == 'blocked':
+                last_blocked = timestamp
+                running_ranges.append((last_running, timestamp - last_running))
+
+        plt.broken_barh(active_ranges, (baseline, width), color='gray')
+        plt.broken_barh(running_ranges, (baseline, width), color='orange', linewidth=0.0)
+
+        baseline += width + padding
+
+    ax.set_ylabel('Node ID and Worker ID')
+    ax.set_yticks(list(0.5 + x for x in range(len(workers))))
+    ax.set_yticklabels(map(lambda x: str(x), workers))
+    ax.set_xlabel('Time [seconds]')
+
+    ax.set_title('Worker Activity')
+
     pdf.savefig(fig)
     plt.close(fig)
 

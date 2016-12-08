@@ -1,6 +1,7 @@
 import os
 import json
 import gzip
+import heapq
 
 from collections import defaultdict
 from helpers import TimestampedLogger
@@ -308,9 +309,17 @@ class DetailedStats(NoopLogger):
         self._activation_tracker = ActivationTracker()
 
         self._submit_to_phase0_distribution = self.DistributionTimer('submit to phase0', system_time)
+        self._task_time_distribution = self.DistributionTimer('task duration', system_time)
 
         self._ts_workers_active = self.TimeSeries('workers active', system_time, 0, lambda x, y: max(x, y))
+        self._ts_workers_blocked = self.TimeSeries('workers blocked', system_time, 0, lambda x, y: min(x, y))
         self._ts_runnable_tasks = self.TimeSeries('runnable tasks', system_time)
+        self._ts_object_transfers_active = self.TimeSeries('object transfers_active', system_time, 0, lambda x, y: max(x,y))
+
+        self._worker_tracker = self.WorkerTracker()
+        self._worker_activity = self.ResourceStateTimeseries('worker state', system_time)
+
+        self._last_task_finished = 0
 
         self.completed_successfully = None
         self.stats = None
@@ -366,6 +375,40 @@ class DetailedStats(NoopLogger):
         def decrement(self):
             self.update(lambda x: x - 1)
 
+
+    class ResourceStateTimeseries(object):
+
+        def __init__(self, name, system_time):
+            self._name = name
+            self._system_time = system_time
+            self.state_log = defaultdict(list)
+
+        def update(self, resource, state):
+            self.state_log[resource].append((self._system_time.get_time(), state))
+
+
+    class WorkerTracker(object):
+        def __init__(self):
+            self._worker_index = defaultdict(lambda: 0)
+            self._free_workers = defaultdict(list)
+            self.task_worker_assignments = {}
+
+        def get_worker(self, node_id, task_id):
+            if node_id in self._free_workers and self._free_workers[node_id]:
+                worker_id = heapq.heappop(self._free_workers[node_id])
+            else:
+                worker_id = self._worker_index[node_id]
+                self._worker_index[node_id] += 1
+            self.task_worker_assignments[task_id] = (node_id, worker_id)
+            return worker_id
+
+        def release(self, task_id):
+            (node_id, worker_id) = self.task_worker_assignments[task_id]
+            del self.task_worker_assignments[task_id]
+            heapq.heappush(self._free_workers[node_id], worker_id)
+            return (node_id, worker_id)
+
+
     def _activated(self, task_id):
         self._ts_runnable_tasks.increment()
 
@@ -375,8 +418,18 @@ class DetailedStats(NoopLogger):
             self._activated(task_id)
 
     def task_phase_started(self, task_id, phase_id, node_id):
+        self._ts_workers_blocked.decrement()
         if phase_id == 0:
             self._submit_to_phase0_distribution.finish(task_id)
+        self._worker_activity.update(
+            self._worker_tracker.task_worker_assignments[task_id],
+            (task_id, 'running'))
+
+    def task_phase_finished(self, task_id, phase_id, node_id):
+        self._ts_workers_blocked.increment()
+        self._worker_activity.update(
+            self._worker_tracker.task_worker_assignments[task_id],
+            (task_id, 'blocked'))
 
     def object_created(self, object_id, node_id, object_size):
         for task_id in self._activation_tracker.object_created(object_id):
@@ -385,19 +438,42 @@ class DetailedStats(NoopLogger):
     def task_started(self, task_id, node_id):
         self._ts_workers_active.increment()
         self._ts_runnable_tasks.decrement()
+        self._ts_workers_blocked.increment()
+        self._task_time_distribution.start((task_id, node_id))
+        worker_id = self._worker_tracker.get_worker(node_id, task_id)
+        self._worker_activity.update(
+            (node_id, worker_id),
+            (task_id, 'initialized'))
 
     def task_finished(self, task_id, node_id):
         self._ts_workers_active.decrement()
+        self._ts_workers_blocked.decrement()
+        self._task_time_distribution.finish((task_id, node_id))
+        self._last_task_finished = self._system_time.get_time()
+        (node_id, worker_id) = self._worker_tracker.release(task_id)
+        self._worker_activity.update(
+            (node_id, worker_id),
+            (task_id, 'freed'))
 
-    def get_submit_to_phase0_distribution(self):
-        return self._submit_to_phase0_distribution.get_times()
+    def object_transfer_started(self, object_id, object_size, src_node_id, dst_node_id):
+        self._ts_object_transfers_active.increment()
+
+    def object_transfer_finished(self, object_id, object_size, src_node_id, dst_node_id):
+        self._ts_object_transfers_active.decrement()
+
 
     def job_ended(self):
         stats = {}
         stats['submit_to_phase0_time'] = self._submit_to_phase0_distribution.get_times()
+        stats['task_time'] = self._task_time_distribution.get_times()
 
         stats['workers_active_timeseries'] = self._ts_workers_active.values
+        stats['workers_blocked_timeseries'] = self._ts_workers_blocked.values
         stats['runnable_tasks_timeseries'] = self._ts_runnable_tasks.values
+        stats['object_transfers_active_timeseries'] = self._ts_object_transfers_active.values
+
+        stats['worker_activity'] = self._worker_activity.state_log
+
         stats['job_completion_time'] = self._system_time.get_time()
 
         self.completed_successfully = True

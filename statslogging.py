@@ -9,7 +9,7 @@ class NoopLogger(object):
     def __init__(self, system_time):
         pass
 
-    def task_submitted(self, task_id, node_id):
+    def task_submitted(self, task_id, node_id, dependencies):
         pass
 
     def task_scheduled(self, task_id, node_id, is_scheduled_locally):
@@ -44,8 +44,8 @@ class PrintingLogger(object):
     def __init__(self, system_time):
         self._pylogger = TimestampedLogger(__name__+'.PrintingLogger', system_time)
 
-    def task_submitted(self, task_id, node_id):
-        self._pylogger.debug('submitted task {} on node {}'.format(task_id, node_id))
+    def task_submitted(self, task_id, node_id, dependencies):
+        self._pylogger.debug('submitted task {} on node {} - dependencies {}'.format(task_id, node_id, str(dependencies)))
 
     def task_scheduled(self, task_id, node_id, is_scheduled_locally):
         if is_scheduled_locally:
@@ -160,7 +160,7 @@ class SummaryStats(object):
             if self._node_tasks_active[node_id] == 0:
                 self._nodes_active -= 1
 
-    def task_submitted(self, task_id, node_id):
+    def task_submitted(self, task_id, node_id, dependencies):
         self._num_tasks_submitted += 1
         self._submit_to_schedule_timer.start(task_id)
         self._submit_to_phase0_timer.start(task_id)
@@ -279,7 +279,7 @@ class DistributionStats(NoopLogger):
                 raise RuntimeError("Have unfinished timers")
             return self._times
 
-    def task_submitted(self, task_id, node_id):
+    def task_submitted(self, task_id, node_id, dependencies):
         self._submit_to_phase0_distribution.start(task_id)
 
     def task_phase_started(self, task_id, phase_id, node_id):
@@ -331,8 +331,8 @@ class EventLogLogger():
     def _add_event(self, event_name, event_data):
         self._event_log.append({'timestamp': self._system_time.get_time(), 'event_name': event_name, 'event_data': event_data})
 
-    def task_submitted(self, task_id, node_id):
-        self._add_event('task_submitted', { 'task_id': task_id, 'node_id': node_id })
+    def task_submitted(self, task_id, node_id, dependencies):
+        self._add_event('task_submitted', { 'task_id': task_id, 'node_id': node_id, 'dependencies': dependencies })
 
     def task_scheduled(self, task_id, node_id, is_scheduled_locally):
         self._add_event('task_scheduled', { 'task_id': task_id, 'node_id': node_id, 'is_scheduled_locally': is_scheduled_locally })
@@ -364,7 +364,7 @@ class EventLogLogger():
         if not os.path.exists('sweep'):
             os.makedirs('sweep')
         with gzip.open('sweep/sim_events.gz', 'wb') as f:
-            f.write(json.dumps(self._event_log))
+            f.write(json.dumps(self._event_log, sort_keys=True, indent=4))
 
 class CompoundLogger():
     def __init__(self, loggers):
@@ -374,8 +374,8 @@ class CompoundLogger():
         for logger in self._loggers:
             getattr(logger, fn)(*args)
 
-    def task_submitted(self, task_id, node_id):
-        self._for_loggers('task_submitted', [task_id, node_id])
+    def task_submitted(self, task_id, node_id, dependencies):
+        self._for_loggers('task_submitted', [task_id, node_id, dependencies])
 
     def task_scheduled(self, task_id, node_id, is_scheduled_locally):
         self._for_loggers('task_scheduled', [task_id, node_id, is_scheduled_locally])

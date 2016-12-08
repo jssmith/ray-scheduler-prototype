@@ -104,7 +104,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
         root_task = self._computation.get_root_task()
         if root_task is not None:
             self.root_task_id = root_task.id()
-            self._logger.task_submitted(self.root_task_id, node_id)
+            self._logger.task_submitted(self.root_task_id, node_id, [])
             self._event_simulation.schedule_immediate(lambda: self.schedule(node_id, self.root_task_id))
             self._event_simulation.schedule_immediate(lambda: self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True)))
 
@@ -373,8 +373,9 @@ class NodeRuntime():
 
     def _handle_update(self, update):
         if isinstance(update, self.TaskSubmitted):
-            self._logger.task_submitted(update.submitted_task_id, self.node_id)
-            self._event_simulation.schedule_immediate(lambda: self._yield_update(SubmitTaskUpdate(self._computation.get_task(update.submitted_task_id))))
+            task = self._computation.get_task(update.submitted_task_id)
+            self._logger.task_submitted(update.submitted_task_id, self.node_id, task.get_depends_on())
+            self._event_simulation.schedule_immediate(lambda: self._yield_update(SubmitTaskUpdate(task)))
         elif isinstance(update, self.TaskPhaseComplete):
             self._pylogger.debug('completed task {} phase {}'.format(update.task_id, update.phase_id))
             self._logger.task_phase_finished(update.task_id, update.phase_id, self.node_id)

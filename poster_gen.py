@@ -1,15 +1,18 @@
 from sweep_queue import sweep_queue
 from sweep_threshold_queue import sweep_threshold_queue
 
-version_prefix = 'dec6a'
+version_prefix = 'dec7a'
 
 min_nodes = 3
 max_nodes = 20
 nodes_step = 1
 
-schedulers = ['trivial', 'trivial_local', 'trivial_threshold_local',
-              'transfer_aware', 'transfer_aware_local', 'transfer_aware_threshold_local',
-              'location_aware', 'location_aware_local', 'location_aware_threshold_local']
+
+schedulers = ['transfer_aware', 'transfer_aware_local', 'transfer_aware_threshold_local']
+
+# schedulers = ['trivial', 'trivial_local', 'trivial_threshold_local',
+#               'transfer_aware', 'transfer_aware_local', 'transfer_aware_threshold_local',
+#               'location_aware', 'location_aware_local', 'location_aware_threshold_local']
 
 threshold_schedulers = ['trivial_threshold_local', 'transfer_aware_threshold_local', 'location_aware_threshold_local']
 
@@ -25,7 +28,7 @@ experiment_name_poster_synmatmul = '{}-poster-synmatmul'.format(version_prefix)
 experiment_name_poster_rnn = '{}-poster-rnn'.format(version_prefix)
 experiment_name_poster_rlpong = '{}-poster-rlpong'.format(version_prefix)
 
-experiment_name_t1l = '{}-poster-thresholdsweep-2'.format(version_prefix)
+experiment_name_t1l = '{}-poster-thresholdsweep'.format(version_prefix)
 
 def queue_basic_sweeps():
     sweep_queue(min_nodes, max_nodes, nodes_step, schedulers,
@@ -53,4 +56,4 @@ def queue_threshold_sweeps():
 
 if __name__ == '__main__':
     queue_basic_sweeps()
-    queue_threshold_sweeps()
+    # queue_threshold_sweeps()

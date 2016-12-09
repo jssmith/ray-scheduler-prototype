@@ -115,6 +115,9 @@ def gen_multiply_trace(num_blocks, block_dim):
     all_tasks += root_phase0_tasks_submitted
     return ComputationDescription(root_task_id, all_tasks)
 
+def output_filename(num_blocks, block_dim):
+    return 'traces/sweep/trace_syn_mat_mul_{}_{}.json.gz'.format(num_blocks, block_dim)
+
 def usage():
     print "Usage: synmultiply.py num_blocks block_dim"
 
@@ -125,7 +128,7 @@ if __name__ == '__main__':
     num_blocks = int(sys.argv[1])
     block_dim = int(sys.argv[2])
     computation = gen_multiply_trace(num_blocks, block_dim)
-    output_filename = 'traces/sweep/trace_syn_mat_mul_{}_{}.json.gz'.format(num_blocks, block_dim)
+    output_filename = output_filename(num_blocks, block_dim)
     print 'output to {}'.format(output_filename)
     with gzip.open(output_filename, 'w') as f:
         f.write(serialize_computation(computation))

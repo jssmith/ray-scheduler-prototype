@@ -505,6 +505,41 @@ class ComputationDescription():
 
         self._root_task = str(root_task)
         self._tasks = tasks_map
+        self.assign_task_depths()
+
+    def assign_task_depths(self):
+        root_task = self._tasks[self._root_task]
+        root_task.depth = 0
+
+        to_visit = [root_task]
+        visited = set()
+        object_depths = {}
+
+        while to_visit:
+            new_to_visit = []
+            for task in to_visit:
+                if task in visited:
+                    raise ValidationError('task graph must be tree')
+                visited.add(task)
+                max_depth = 0
+                for depends_on_object_id in task.get_depends_on():
+                    if depends_on_object_id not in object_depths:
+                        raise ValidationError('missing object depth')
+                    if object_depths[depends_on_object_id] > max_depth:
+                        max_depth = object_depths[depends_on_object_id]
+                task.depth = max_depth + 1
+                # print "depth of {} is {}".format(task.id(), task.depth)
+                for res_object_id in map(lambda r: r.object_id, task.get_results()):
+                    object_depths[res_object_id] = task.depth
+                for phase_id in range(task.num_phases()):
+                    for res_object_id in map(lambda r: r.object_id, task.get_phase(phase_id).creates):
+                        object_depths[res_object_id] = task.depth
+                for phase_id in range(task.num_phases()):
+                    for submits in task.get_phase(phase_id).submits:
+                        submits_task = self._tasks[submits.task_id]
+                        new_to_visit.append(submits_task)
+            to_visit = new_to_visit
+
 
     def verify(self):
         tasks = self._tasks.values()
@@ -681,6 +716,9 @@ class Task():
         self._phases = phases
         self._results = results
 
+        # Depth is assigned by ComputationDescription
+        self.depth = None
+
     def id(self):
         return self._task_id
 
@@ -692,6 +730,9 @@ class Task():
 
     def num_phases(self):
         return len(self._phases)
+
+    def phases(self):
+        return self._phases[:]
 
     def get_results(self):
         return self._results

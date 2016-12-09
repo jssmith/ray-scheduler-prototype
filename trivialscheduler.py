@@ -207,6 +207,28 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
         return None
 
 
+class TrivialDFPriorityGlobalScheduler(TrivialGlobalScheduler):
+
+    def __init__(self, system_time, scheduler_db, event_loop):
+        self._pylogger = TimestampedLogger(__name__+'.TrivialDFPriorityGlobalScheduler', system_time)
+        TrivialGlobalScheduler.__init__(self, system_time, scheduler_db,
+                                        event_loop)
+
+    def _process_tasks(self):
+        runnable_tasks = map(lambda task_id: self._state.tasks[task_id], self._state.runnable_tasks)
+
+        print map(lambda x: '>>>{} {}'.format(x.id(), x.depth), sorted(runnable_tasks, key=lambda task: -task.depth))
+
+        for task_id in map(lambda x: x.id(), sorted(runnable_tasks, key=lambda task: -task.depth)):
+            node_id = self._select_node(task_id)
+            if node_id is not None:
+                self._execute_task(node_id, task_id)
+            else:
+                # Not able to schedule so return
+                print 'unable to schedule'
+                return
+
+
 class TrivialPriorityGlobalScheduler(TrivialGlobalScheduler):
 
     def __init__(self, system_time, scheduler_db, event_loop):
@@ -969,6 +991,19 @@ class TrivialScheduler(BaseScheduler):
                                local_scheduler_cls=local_scheduler_cls,
                                local_nodes=local_nodes)
 
+
+class TrivialDFPriorityScheduler(BaseScheduler):
+
+    def __init__(self, system_time, scheduler_db, event_loop,
+                 global_scheduler_kwargs=None, local_scheduler_kwargs=None,
+                 local_scheduler_cls=PassthroughLocalScheduler,
+                 local_nodes=None):
+        BaseScheduler.__init__(self, system_time, scheduler_db, event_loop,
+                               global_scheduler_kwargs=global_scheduler_kwargs,
+                               local_scheduler_kwargs=local_scheduler_kwargs,
+                               global_scheduler_cls=TrivialDFPriorityGlobalScheduler,
+                               local_scheduler_cls=local_scheduler_cls,
+                               local_nodes=local_nodes)
 
 class TrivialPriorityScheduler(BaseScheduler):
 

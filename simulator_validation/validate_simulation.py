@@ -3,8 +3,9 @@ import subprocess32 as subprocess
 import simplejson as json
 
 RAY_LOG_DIRECTORY = "/tmp/raylogs"
-RUN_WORKLOAD_SCRIPT = "../workloads/rl_pong/driver.py"
-NUM_STEPS = 1
+RUN_WORKLOAD_SCRIPT = "../workloads/mat_mult.py"
+BLOCK_SIZE = 100
+NUM_BLOCKS = 10
 
 BUILD_TRACE_SCRIPT = "../build_trace.py"
 
@@ -26,7 +27,8 @@ def run_workload(num_workers):
 
     # Run the workload.
     proc = subprocess.Popen(["python", RUN_WORKLOAD_SCRIPT,
-                             "--iterations", str(NUM_STEPS * 10),
+                             "--block-size", str(BLOCK_SIZE),
+                             "--size", str(NUM_BLOCKS * BLOCK_SIZE),
                              "--workers", str(num_workers),
                              ],
                             stdout=subprocess.PIPE
@@ -34,7 +36,11 @@ def run_workload(num_workers):
     proc.wait()
     output = proc.stdout.read()
     output = output.split('\n')
-    runtime = float(output[12])
+    for line in output:
+        try:
+            runtime = float(line)
+        except:
+            continue
 
     # Build the trace.
     proc = subprocess.Popen(["python", "../build_trace.py", RAY_LOG_DIRECTORY,
@@ -72,12 +78,23 @@ def generate_data(min_num_workers, max_num_workers, step_size):
         print ("Running workload for {} workers".format(num_workers))
         actual_runtime = run_workload(num_workers)
         print ("Finished workload for {} workers".format(num_workers))
+        with open('output.csv', 'a') as f:
+            f.write("{num_workers} {runtime}\n".format(
+                num_workers=num_workers,
+                runtime=actual_runtime
+                ))
         actual_runtimes.append((num_workers, actual_runtime))
         simulation_runtimes = []
         print ("Running simulations for {} workers".format(num_workers))
         for num_simulation_workers in num_workers_range:
             simulation_runtime = run_simulation(num_workers, num_simulation_workers)
             simulation_runtimes.append((num_simulation_workers, simulation_runtime))
+            with open('output.csv', 'a') as f:
+                f.write("{num_workers} {num_simulation_workers} {runtime}\n".format(
+                    num_workers=num_workers,
+                    num_simulation_workers=num_simulation_workers,
+                    runtime=simulation_runtime
+                    ))
         simulation_results[num_workers] = simulation_runtimes
         print ("Finished simulations for {} workers".format(num_workers))
     return actual_runtimes, simulation_results

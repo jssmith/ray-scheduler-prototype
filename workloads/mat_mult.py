@@ -23,15 +23,15 @@ def mat_mul(size, num_workers, block_size):
     print "Matrix multiply with size {}, block size {}".format(size,
             block_size)
     start = time.time()
-    a = da.random.remote([size, size], block_size=block_size)
-    b = da.random.remote([size, size], block_size=block_size)
+    a = da.ones.remote([size, size], block_size=block_size)
+    b = da.ones.remote([size, size], block_size=block_size)
     c = da.dot.remote(a, b)
     c = da.assemble.remote(c)
     print c.id
     c_get = ray.get(c)
     end = time.time()
     print c_get
-    print "Took {} seconds".format(end - start)
+    print "{}".format(end - start)
     return ray
 
 if __name__ == '__main__':

@@ -11,6 +11,7 @@ import statslogging
 
 schedulers = {
     'trivial' : TrivialScheduler,
+    'trivial_priority' : TrivialPriorityScheduler,
     'location_aware' : LocationAwareScheduler,
     'delay' : DelayScheduler,
     'transfer_aware' : TransferCostAwareScheduler,

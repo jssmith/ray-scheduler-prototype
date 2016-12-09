@@ -207,6 +207,38 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
         return None
 
 
+class TrivialPriorityGlobalScheduler(TrivialGlobalScheduler):
+
+    def __init__(self, system_time, scheduler_db, event_loop):
+        self._pylogger = TimestampedLogger(__name__+'.TrivialPriorityGlobalScheduler', system_time)
+        TrivialGlobalScheduler.__init__(self, system_time, scheduler_db,
+                                        event_loop)
+
+    def _process_tasks(self):
+#        print "global scheduler processing tasks, runnable number {} | {}".format(len(self._state.runnable_tasks), self._state.runnable_tasks)
+        runnable_tasks = self._state.runnable_tasks[:]
+        task_data = []
+        for t in runnable_tasks:
+            ready_objects = self._state.tasks[t].get_depends_on()
+            ready_object_sizes = [self._state.finished_object_sizes[o] for o in ready_objects]
+            total_object_size = sum([self._state.finished_object_sizes[o] for o in self._state.tasks[t].get_depends_on()])
+            task_data.append((total_object_size, t))
+        task_data = sorted(task_data, key=lambda elm: elm[0])
+        task_data.reverse()
+        runnable_tasks = [task_id for _, task_id in task_data]
+
+        for task_id in runnable_tasks:
+            node_id = self._select_node(task_id)
+#            print "process tasks got node id {} for task id {}".format(node_id, task_id)
+
+            if node_id is not None:
+                self._execute_task(node_id, task_id)
+            else:
+                # Not able to schedule so return
+                print 'unable to schedule'
+                return
+
+
 class LocationAwareGlobalScheduler(BaseGlobalScheduler):
 
     def __init__(self, system_time, scheduler_db, event_loop):
@@ -934,6 +966,20 @@ class TrivialScheduler(BaseScheduler):
                                global_scheduler_kwargs=global_scheduler_kwargs,
                                local_scheduler_kwargs=local_scheduler_kwargs,
                                global_scheduler_cls=TrivialGlobalScheduler,
+                               local_scheduler_cls=local_scheduler_cls,
+                               local_nodes=local_nodes)
+
+
+class TrivialPriorityScheduler(BaseScheduler):
+
+    def __init__(self, system_time, scheduler_db, event_loop,
+                 global_scheduler_kwargs=None, local_scheduler_kwargs=None,
+                 local_scheduler_cls=PassthroughLocalScheduler,
+                 local_nodes=None):
+        BaseScheduler.__init__(self, system_time, scheduler_db, event_loop,
+                               global_scheduler_kwargs=global_scheduler_kwargs,
+                               local_scheduler_kwargs=local_scheduler_kwargs,
+                               global_scheduler_cls=TrivialPriorityGlobalScheduler,
                                local_scheduler_cls=local_scheduler_cls,
                                local_nodes=local_nodes)
 

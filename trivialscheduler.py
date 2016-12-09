@@ -732,9 +732,9 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
         #self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) / float(self._node_runtime.num_nodes)
-        self.threshold1l =  float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) * self._node_runtime.num_workers / (self._node_runtime.num_nodes)
+        self.threshold1l =  float(os.getenv('RAY_SCHED_THRESHOLD1L', 1.8)) * self._node_runtime.num_workers / (self._node_runtime.num_nodes)
         #self.threshold1h = float(os.getenv('RAY_SCHED_THRESHOLD1H', 8)) / float(self._node_runtime.num_nodes)
-        self.threshold1h = self.threshold1l * 4
+        self.threshold1h = self.threshold1l * 3
         self.threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 5)
         #print "threshold scheduler: threshold1l is {}".format(self.threshold1l)
         #print "threshold scheduler: threshold1h is {}".format(self.threshold1h)
@@ -837,14 +837,14 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
             self._forward_to_global(task, scheduled_locally = True)
 
         #if the local scheduler has very low load, even with expected objects this still reduces to the trivial case (depending on the "low load" threshold)
-        elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and (float(self.threshold1l) > float(local_load))):
+        elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and (float(self.threshold1l) >= float(local_load))):
             self._pylogger.debug('all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally on node {}'.format(local_load, self.threshold1l, task.id(), self._node_id))
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)
 
 
         #if the local scheduler has a very high load, it's better to send the task to the global scheduler, even without querrying about all the remote objects
-        elif float(local_load) > float(self.threshold1h):
+        elif float(local_load) >= float(self.threshold1h):
             self._pylogger.debug('threshold scheduler: local load is very high. local load is {} and threshold is {}, so sending task {} to global scheduler immidietly from node {}'.format(local_load, self.threshold1h, task.id(), self._node_id))
             self._forward_to_global(task, scheduled_locally = False)
 

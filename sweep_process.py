@@ -67,6 +67,10 @@ def replay_trace(config):
     log_name = replay_id + '_event_log.gz'
     s3_cp(sim_log_fn, ec2config.s3_bucket + '/' + experiment_dir + '/' + log_name)
 
+    stats_name = replay_id + '_stats.json'
+    call(['python', 'analyze_basic_json.py', sim_log_fn, 'sweep/' + stats_name])
+    s3_cp('sweep/' + stats_name, ec2config.s3_bucket + '/' + experiment_dir + '/' + stats_name)
+
     end_time = time.time()
 
     print "finished replay {} in {:.3f}".format(replay_id, end_time - start_time)

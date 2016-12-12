@@ -236,7 +236,6 @@ class SummaryStats(object):
         def object_instance_added(self, object_id, object_size):
             if object_id in self._object_use_info:
                 raise RuntimeError('Expected object_added only once for object {} on {}'.format(object_id, self._name))
-            print "add object {} on tracker {}".format(object_id, self._name)
             self._object_use_info[object_id] = self.ObjectUseInfo(object_id, object_size, self._system_time.get_time())
 
         def object_used(self, object_id):

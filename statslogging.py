@@ -251,7 +251,7 @@ class SummaryStats(object):
             # we use 0 and 1 to sort adds before removes
             ACTION_ADDED = 0
             ACTION_LAST_USED = 1
-            for (_, oui) in self._object_use_info:
+            for (_, oui) in self._object_use_info.items():
                 if oui.time_last_used is not None:
                     deltas.append((oui.time_added, ACTION_ADDED, oui.object_size))
                     deltas.append((oui.time_last_used, ACTION_LAST_USED, oui.object_size))
@@ -386,7 +386,7 @@ class SummaryStats(object):
         stats['max_cache_depth_items'] = self._max_cache_depth_items
         stats['max_cache_depth_size'] = self._max_cache_depth_size
 
-        max_cache_info = map(lambda (_, x): x.max_cache_needed(), self._object_lifetime_trackers)
+        max_cache_info = map(lambda (_, x): x.max_cache_needed(), self._object_lifetime_trackers.items())
         stats['max_cache_precise_items'] = max(map(lambda x: x[0], max_cache_info))
         stats['max_cache_precise_size'] = max(map(lambda x: x[1], max_cache_info))
 

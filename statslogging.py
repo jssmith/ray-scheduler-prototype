@@ -31,7 +31,10 @@ class NoopLogger(object):
     def object_created(self, object_id, node_id, object_size):
         pass
 
-    def object_used(self, object_id, node_id, cache_depth_items, cache_depth_object_size):
+    def object_instace_added(self, object_id, node_id, object_size):
+        pass
+
+    def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
         pass
 
     def object_transfer_started(self, object_id, object_size, src_node_id, dst_node_id):
@@ -73,7 +76,10 @@ class PrintingLogger(object):
     def object_created(self, object_id, node_id, object_size):
         self._pylogger.debug('created object {} of size {} on node {}'.format(object_id, object_size, node_id))
 
-    def object_used(self, object_id, node_id, cache_depth_items, cache_depth_object_size):
+    def object_instace_added(self, object_id, node_id, object_size):
+        self._pylogger.debug('new instance of object {} of size {} on node {}'.format(object_id, object_size, node_id))
+
+    def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
         self._pylogger.debug('used object {} at depth {} items {} bytes on node {}'.format(object_id, cache_depth_items, cache_depth_object_size, node_id))
 
     def object_transfer_started(self, object_id, object_size, src_node_id, dst_node_id):
@@ -257,7 +263,10 @@ class SummaryStats(object):
         for task_id in self._activation_tracker.object_created(object_id):
             self._activated(task_id)
 
-    def object_used(self, object_id, node_id, cache_depth_items, cache_depth_object_size):
+    def object_instace_added(self, object_id, node_id, object_size):
+        pass
+
+    def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
         if cache_depth_items > self._max_cache_depth_items:
             self._max_cache_depth_items = cache_depth_items
         if cache_depth_object_size > self._max_cache_depth_size:
@@ -338,6 +347,8 @@ class DetailedStats(NoopLogger):
 
         self._worker_tracker = self.WorkerTracker()
         self._worker_activity = self.ResourceStateTimeseries('worker state', system_time)
+
+        self._object_lifetime_trackers = {}
 
         self._last_task_finished = 0
 
@@ -428,6 +439,61 @@ class DetailedStats(NoopLogger):
             heapq.heappush(self._free_workers[node_id], worker_id)
             return (node_id, worker_id)
 
+    class ObjectLifetimeTracker(object):
+        class ObjectUseInfo(object):
+            def __init__(self, object_id, object_size, time_added):
+                self.object_id = object_id
+                self.object_size = object_size
+                self.time_added = time_added
+                self.time_last_used = None
+
+        def __init__(self, name, system_time):
+            self._name = name
+            self._system_time = system_time
+            self._object_use_info = {}
+
+        def object_instance_added(self, object_id, object_size):
+            if object_id in self._object_use_info:
+                raise RuntimeError('Expected object_added only once for object {} on {}'.format(object_id, self._name))
+            self._object_use_info[object_id] = self.ObjectUseInfo(object_id, object_size, self._system_time.get_time())
+
+        def object_used(self, object_id):
+            if object_id not in self._object_use_info:
+                raise RuntimeError('Missing object_added only once for object {} on {}'.format(object_id, self._name))
+            self._object_use_info[object_id].time_last_used = self._system_time.get_time()
+
+        def max_cache_needed(self):
+            deltas = []
+            # we use 0 and 1 to sort adds before removes
+            ACTION_ADDED = 0
+            ACTION_LAST_USED = 1
+            for (_, oui) in self._object_use_info:
+                if oui.time_last_used is not None:
+                    deltas.append((oui.time_added, ACTION_ADDED, oui.object_size))
+                    deltas.append((oui.time_last_used, ACTION_LAST_USED, oui.object_size))
+            ct = 0
+            max_ct = 0
+            size = 0
+            max_size = 0
+            for (_, action, object_size) in sorted(deltas):
+                if action == ACTION_ADDED:
+                    ct += 1
+                    size += object_size
+                    if ct > max_ct:
+                        max_ct = ct
+                    if size > max_size:
+                        max_size = size
+                elif action == ACTION_LAST_USED:
+                    ct -= 1
+                    size -= object_size
+                else:
+                    raise RuntimeError('Unexpected error')
+            return max_ct, max_size
+
+    def _get_object_lifetime_tracker(self, node_id):
+        if node_id not in self._object_lifetime_trackers:
+            self._object_lifetime_trackers[node_id] = ObjectLifetimeTracker('lifetime tracker node {}'.format(node_id), self._system_time)
+        return self._object_lifetime_trackers[node_id]
 
     def _activated(self, task_id):
         self._ts_runnable_tasks.increment()
@@ -455,8 +521,11 @@ class DetailedStats(NoopLogger):
         for task_id in self._activation_tracker.object_created(object_id):
             self._activated(task_id)
 
-    def object_used(self, object_id, node_id, cache_depth_items, cache_depth_object_size):
-        pass
+    def object_instace_added(self, object_id, node_id, object_size):
+        self._get_object_lifetime_tracker(node_id).object_instace_added(object_id, object_size)
+
+    def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
+        self._get_object_lifetime_tracker(node_id).object_used(object_id)
 
     def task_started(self, task_id, node_id):
         self._ts_workers_active.increment()
@@ -497,7 +566,11 @@ class DetailedStats(NoopLogger):
 
         stats['worker_activity'] = self._worker_activity.state_log
 
-        stats['job_completion_time'] = self._system_time.get_time()
+        stats['job_completion_time'] = self._system_time.get_time() #TODO - should this be last job completion time
+
+        max_cache_info = map(lambda (_, x): x.max_cache_needed(), self._object_lifetime_trackers)
+        stats['max_cache_precise_items'] = max(map(lambda x: x[0], max_cache_info))
+        stats['max_cache_precise_size'] = max(map(lambda x: x[1], max_cache_info))
 
         self.completed_successfully = True
         self.stats = stats
@@ -559,9 +632,12 @@ class EventLogLogger():
     def object_created(self, object_id, node_id, object_size):
         self._add_event('object_created', { 'object_id': object_id, 'node_id': node_id, 'object_size': object_size })
 
-    def object_used(self, object_id, node_id, cache_depth_items, cache_depth_object_size):
+    def object_instace_added(self, object_id, node_id, object_size):
+        self._add_event('object_instance_added', { 'object_id': object_id, 'node_id': node_id, 'object_size': object_size })
+
+    def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
         self._add_event('object_used', {
-            'object_id': object_id, 'node_id': node_id,
+            'object_id': object_id, 'node_id': node_id, 'object_size': object_size,
             'cache_depth_items': cache_depth_items,
             'cache_depth_object_size': cache_depth_object_size})
 
@@ -608,8 +684,11 @@ class CompoundLogger():
     def object_created(self, object_id, node_id, object_size):
         self._for_loggers('object_created', [object_id, node_id, object_size])
 
-    def object_used(self, object_id, node_id, cache_depth_items, cache_depth_object_size):
-        self._for_loggers('object_used', [object_id, node_id, cache_depth_items, cache_depth_object_size])
+    def object_instance_added(self, object_id, node_id, object_size):
+        self._for_loggers('object_instance_added', [object_id, node_id, object_size])
+
+    def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
+        self._for_loggers('object_used', [object_id, node_id, object_size, cache_depth_items, cache_depth_object_size])
 
     def object_transfer_started(self, object_id, object_size, src_node_id, dst_node_id):
         self._for_loggers('object_transfer_started', [object_id, object_size, src_node_id, dst_node_id])

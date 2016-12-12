@@ -142,7 +142,7 @@ class FIFOObjectCache():
         if not object_id in self._object_info:
             raise RuntimeError('Object {} was not added'.format(object_id))
         object_info = self._object_info[object_id]
-        self._logger.object_used(object_id, self.node_id, object_info.cum_ct, object_info.cum_size)
+        self._logger.object_used(object_id, self.node_id, object_info.object_size, object_info.cum_ct, object_info.cum_size)
 
 
 class LRUObjectCache():
@@ -180,6 +180,7 @@ class LRUObjectCache():
                 raise RuntimeError('object id {} not found'.format(object_id))
             cum_ct += 1
             cum_size += node.object_size
+        object_size = node.object_size
         if node != self._root:
             node.prev_node.next_node = node.next_node
             if node.next_node is not None:
@@ -188,7 +189,7 @@ class LRUObjectCache():
             node.next_node = self._root
             node.prev_node = None
             self._root = node
-        self._logger.object_used(object_id, self.node_id, cum_ct, cum_size)
+        self._logger.object_used(object_id, self.node_id, object_size, cum_ct, cum_size)
 
 
 class ObjectStoreRuntime():

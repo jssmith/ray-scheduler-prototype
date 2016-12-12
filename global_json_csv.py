@@ -1,5 +1,6 @@
 import sys
-import gen_global
+import gen_global_2 as gen_global
+# import gen_global
 
 from sweep_csv import gen_csv
 

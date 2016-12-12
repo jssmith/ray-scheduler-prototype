@@ -9,14 +9,14 @@ import hashlib
 
 from boto.sqs.message import Message
 
-def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}):
+def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}, object_transfer_time_cost=.00000001):
     m = Message()
     s = json.dumps({
             'replay_id': new_id(),
             'scheduler': scheduler,
             'num_nodes': int(num_nodes),
             'num_workers_per_node': 4,
-            'object_transfer_time_cost': .00000001,
+            'object_transfer_time_cost': object_transfer_time_cost,
             'db_message_delay': .001,
             'validate': 'false',
             'tracefile': str(tracefile),
@@ -28,7 +28,7 @@ def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}):
     queue.write(m)
 
 
-def sweep_queue(min_nodes, max_nodes, nodes_step, schedulers, experiment_name, tracefile):
+def sweep_queue(min_nodes, max_nodes, nodes_step, schedulers, experiment_name, tracefile, object_transfer_time_cost=.00000001):
     node_cts = range(min_nodes, max_nodes + 1, nodes_step)
 
     print 'Schedulers:', schedulers
@@ -40,7 +40,7 @@ def sweep_queue(min_nodes, max_nodes, nodes_step, schedulers, experiment_name, t
 
     for scheduler in schedulers:
         for num_nodes in node_cts:
-            enqueue(queue, num_nodes, scheduler, tracefile, experiment_name)
+            enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, object_transfer_time_cost=object_transfer_time_cost)
 
 def new_id():
     return hashlib.sha1(str(uuid.uuid1())).hexdigest()[:8]

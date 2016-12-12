@@ -1,7 +1,7 @@
 import os
 import sys
 
-import gen_global_3 as gen_global
+import gen_global_4 as gen_global
 
 from plot_workloads import drawplots_fn, drawplots_generic, drawplots_relative
 

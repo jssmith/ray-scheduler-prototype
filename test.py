@@ -687,7 +687,7 @@ class TestNodeRuntime(unittest.TestCase):
     def _setup_node_runtime(self, computation, node_id, num_workers):
         self.node_id = node_id
         self.num_workers = num_workers
-        self.node_runtime = replaystate.NodeRuntime(self.event_simulation, self.object_store, self.logger, computation, node_id, num_workers)
+        self.node_runtime = replaystate.NodeRuntime(self.event_simulation, self.object_store, self.logger, computation, node_id, num_workers, num_nodes=1)
         self.node_runtime.get_updates(lambda update: self._update_handler(update))
 
     def _update_handler(self, update):

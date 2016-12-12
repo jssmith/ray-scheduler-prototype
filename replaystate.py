@@ -137,6 +137,7 @@ class FIFOObjectCache():
         self._cum_ct += 1
         self._cum_size += object_size
         self._object_info[object_id] = FIFOObjectCache.ObjectInfo(object_size, self._event_simulation.get_time(), self._cum_ct, self._cum_size)
+        self._logger.object_instance_added(object_id, self.node_id, object_size)
 
     def use_object(self, object_id):
         if not object_id in self._object_info:
@@ -169,6 +170,7 @@ class LRUObjectCache():
             old_root.prev_node = new_root
         self._node_lookup[object_id] = new_root
         self._root = new_root
+        self._logger.object_instance_added(object_id, self.node_id, object_size)
 
     def use_object(self, object_id):
         cum_ct = 1

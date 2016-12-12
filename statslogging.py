@@ -31,7 +31,7 @@ class NoopLogger(object):
     def object_created(self, object_id, node_id, object_size):
         pass
 
-    def object_instace_added(self, object_id, node_id, object_size):
+    def object_instance_added(self, object_id, node_id, object_size):
         pass
 
     def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
@@ -76,7 +76,7 @@ class PrintingLogger(object):
     def object_created(self, object_id, node_id, object_size):
         self._pylogger.debug('created object {} of size {} on node {}'.format(object_id, object_size, node_id))
 
-    def object_instace_added(self, object_id, node_id, object_size):
+    def object_instance_added(self, object_id, node_id, object_size):
         self._pylogger.debug('new instance of object {} of size {} on node {}'.format(object_id, object_size, node_id))
 
     def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
@@ -326,8 +326,8 @@ class SummaryStats(object):
             self._activated(task_id)
 
 
-    def object_instace_added(self, object_id, node_id, object_size):
-        self._get_object_lifetime_tracker(node_id).object_instace_added(object_id, object_size)
+    def object_instance_added(self, object_id, node_id, object_size):
+        self._get_object_lifetime_tracker(node_id).object_instance_added(object_id, object_size)
 
     def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
         self._get_object_lifetime_tracker(node_id).object_used(object_id)
@@ -531,7 +531,7 @@ class DetailedStats(NoopLogger):
         for task_id in self._activation_tracker.object_created(object_id):
             self._activated(task_id)
 
-    def object_instace_added(self, object_id, node_id, object_size):
+    def object_instance_added(self, object_id, node_id, object_size):
         pass
 
     def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):
@@ -638,7 +638,7 @@ class EventLogLogger():
     def object_created(self, object_id, node_id, object_size):
         self._add_event('object_created', { 'object_id': object_id, 'node_id': node_id, 'object_size': object_size })
 
-    def object_instace_added(self, object_id, node_id, object_size):
+    def object_instance_added(self, object_id, node_id, object_size):
         self._add_event('object_instance_added', { 'object_id': object_id, 'node_id': node_id, 'object_size': object_size })
 
     def object_used(self, object_id, node_id, object_size, cache_depth_items, cache_depth_object_size):

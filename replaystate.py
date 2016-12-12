@@ -3,7 +3,7 @@ import heapq
 import itertools
 import types
 
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from collections import deque
 from schedulerbase import *
 from helpers import TimestampedLogger
@@ -109,8 +109,90 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self._event_simulation.schedule_immediate(lambda: self._yield_global_scheduler_update(ForwardTaskUpdate(root_task, node_id, True)))
 
 
+class NoopObjectCache():
+
+    def __init__(self, node_id, event_simulation, logger):
+        pass
+
+    def add_object(self, object_id, object_size):
+        pass
+
+    def use_object(self, object_id):
+        pass
+
+
+class FIFOObjectCache():
+
+    ObjectInfo = namedtuple('ObjectInfo', ['object_size', 'timestamp', 'cum_ct', 'cum_size'])
+
+    def __init__(self, node_id, event_simulation, logger):
+        self.node_id = node_id
+        self._event_simulation = event_simulation
+        self._logger = logger
+        self._object_info = {}
+        self._cum_ct = 0
+        self._cum_size = 0
+
+    def add_object(self, object_id, object_size):
+        self._cum_ct += 1
+        self._cum_size += object_size
+        self._object_info[object_id] = FIFOObjectCache.ObjectInfo(object_size, self._event_simulation.get_time(), self._cum_ct, self._cum_size)
+
+    def use_object(self, object_id):
+        if not object_id in self._object_info:
+            raise RuntimeError('Object {} was not added'.format(object_id))
+        object_info = self._object_info[object_id]
+        self._logger.object_used(object_id, self.node_id, object_info.cum_ct, object_info.cum_size)
+
+
+class LRUObjectCache():
+    class ListNode():
+        def __init__(self, object_id, object_size, prev_node, next_node):
+            self.object_id = object_id
+            self.object_size = object_size
+            self.prev_node = prev_node
+            self.next_node = next_node
+
+    def __init__(self, node_id, event_simulation, logger):
+        self.node_id = node_id
+        self._event_simulation = event_simulation
+        self._logger = logger
+        self._node_lookup = {}
+        self._cum_ct = 0
+        self._cum_size = 0
+        self._root = None
+
+    def add_object(self, object_id, object_size):
+        old_root = self._root
+        new_root = LRUObjectCache.ListNode(object_id, object_size, None, old_root)
+        if old_root is not None:
+            old_root.prev_node = new_root
+        self._node_lookup[object_id] = new_root
+        self._root = new_root
+
+    def use_object(self, object_id):
+        cum_ct = 1
+        cum_size = self._root.object_size
+        node = self._root
+        while node.object_id != object_id:
+            node = node.next_node
+            if node is None:
+                raise RuntimeError('object id {} not found'.format(object_id))
+            cum_ct += 1
+            cum_size += node.object_size
+        if node != self._root:
+            node.prev_node.next_node = node.next_node
+            if node.next_node is not None:
+                node.next_node.prev_node = node.prev_node
+            self._root.prev_node = node
+            node.next_node = self._root
+            node.prev_node = None
+            self._root = node
+        self._logger.object_used(object_id, self.node_id, cum_ct, cum_size)
+
+
 class ObjectStoreRuntime():
-    def __init__(self, event_simulation, logger, data_transfer_time_cost, db_message_delay):
+    def __init__(self, event_simulation, logger, data_transfer_time_cost, db_message_delay, cache_class):
         self._event_simulation = event_simulation
         self._logger = logger
         self._object_locations = defaultdict(lambda: {})
@@ -120,6 +202,13 @@ class ObjectStoreRuntime():
         self._db_message_delay = db_message_delay
         self._awaiting_completion = defaultdict(list)
         self._awaiting_copy = defaultdict(list)
+        self._object_cache = {}
+        self._cache_class = cache_class
+
+    def _get_object_cache(self, node_id):
+        if node_id not in self._object_cache:
+            self._object_cache[node_id] = self._cache_class(node_id, self._event_simulation, self._logger)
+        return self._object_cache[node_id]
 
     def expect_object(self, object_id, node_id):
         if node_id not in self._object_locations[object_id] or self._object_locations[object_id][node_id] != ObjectStatus.READY:
@@ -129,6 +218,7 @@ class ObjectStoreRuntime():
         self._logger.object_created(object_id, node_id, object_size)
         self._object_locations[object_id][node_id] = ObjectStatus.READY
         self._object_sizes[object_id] = object_size
+        self._get_object_cache(node_id).add_object(object_id, object_size)
         self._yield_object_ready_update(object_id, node_id, object_size)
         if object_id in self._awaiting_completion.keys():
             for (d_node_id, on_done) in self._awaiting_completion[object_id]:
@@ -146,6 +236,9 @@ class ObjectStoreRuntime():
             return self._object_locations[object_id][node_id]
         else:
             return ObjectStatus.UNKNOWN
+
+    def is_locally_ready(self, object_id, node_id):
+        return self.is_local(object_id, node_id) == ObjectStatus.READY
 
     def get_object_size(self, node_id, object_id, result_handler):
         handler = lambda: result_handler(self._object_sizes(object_id))
@@ -174,6 +267,11 @@ class ObjectStoreRuntime():
         for update_handler in self._update_handlers[node_id]:
             update_handler(update)
 
+    def use_object(self, object_id, node_id):
+        if not node_id in self._object_locations[object_id] or self._object_locations[object_id][node_id] != ObjectStatus.READY:
+            raise RuntimeError('Use of object not available locally - {} on node {} has status {}'.format(object_id, node_id, self._object_locations[object_id][node_id]))
+        self._get_object_cache(node_id).use_object(object_id)
+
     def require_object(self, object_id, node_id, on_done):
         object_ready_locations = dict(filter(lambda (node_id, status): status == ObjectStatus.READY, self._object_locations[object_id].items()))
         if node_id in object_ready_locations.keys():
@@ -195,6 +293,7 @@ class ObjectStoreRuntime():
             if (object_id, dst_node_id) in self._awaiting_copy.keys():
                 self._awaiting_copy[(object_id, dst_node_id)].append(on_done)
             elif src_node_id in self._object_locations[object_id].keys() and self._object_locations[object_id][src_node_id] == ObjectStatus.READY:
+                self.use_object(object_id, src_node_id)
                 object_size = self._object_sizes[object_id]
                 data_transfer_time = self._db_message_delay + object_size * self._data_transfer_time_cost
                 self._logger.object_transfer_started(object_id, object_size, src_node_id, dst_node_id)
@@ -204,8 +303,9 @@ class ObjectStoreRuntime():
                 raise RuntimeError('Unexpected failure to copy object {} to {} from {}'.format(object_id, dst_node_id, src_node_id))
 
     def _object_copied(self, object_id, object_size, src_node_id, dst_node_id):
-        self._object_locations[object_id][dst_node_id] = ObjectStatus.READY
         self._logger.object_transfer_finished(object_id, object_size, src_node_id, dst_node_id)
+        self._object_locations[object_id][dst_node_id] = ObjectStatus.READY
+        self._get_object_cache(dst_node_id).add_object(object_id, object_size)
         self._yield_object_ready_update(object_id, dst_node_id, self._object_sizes[object_id])
         on_done_fns = self._awaiting_copy[(object_id, dst_node_id)]
         del self._awaiting_copy[(object_id, dst_node_id)]
@@ -341,6 +441,8 @@ class NodeRuntime():
         self._pylogger.debug('executing task {} phase {}'.format(task_id, phase_id))
         self._logger.task_phase_started(task_id, phase_id, self.node_id)
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
+        for d_object_id in task_phase.depends_on:
+            self._object_store.use_object(d_object_id, self.node_id)
         for put_event in task_phase.creates:
             self._event_simulation.schedule_delayed(
                     put_event.time_offset,
@@ -363,7 +465,7 @@ class NodeRuntime():
         depends_on = task_phase.depends_on
         needs = self.Dependencies(self, task_id, phase_id)
         for d_object_id in depends_on:
-            if not self._object_store.is_local(d_object_id, self.node_id):
+            if not self._object_store.is_locally_ready(d_object_id, self.node_id):
                 needs.add_object_dependency(d_object_id)
                 self._object_store.require_object(d_object_id, self.node_id, lambda d_object_id=d_object_id: needs.object_available(d_object_id))
         if not needs.has_dependencies():

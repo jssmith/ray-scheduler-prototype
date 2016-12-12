@@ -9,11 +9,12 @@ import hashlib
 
 from boto.sqs.message import Message
 
-def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}, object_transfer_time_cost=.00000001):
+def enqueue(queue, num_nodes, scheduler, tracefile, experiment_name, env={}, object_transfer_time_cost=.00000001, cache_policy='lru'):
     m = Message()
     s = json.dumps({
             'replay_id': new_id(),
             'scheduler': scheduler,
+            'cache_policy': cache_policy,
             'num_nodes': int(num_nodes),
             'num_workers_per_node': 4,
             'object_transfer_time_cost': object_transfer_time_cost,

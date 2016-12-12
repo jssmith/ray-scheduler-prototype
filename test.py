@@ -505,7 +505,7 @@ class TestObjectStoreRuntime(unittest.TestCase):
 
     def setUp(self):
         self.event_simulation = EventSimulation()
-        self.os = ObjectStoreRuntime(self.event_simulation, PrintingLogger(self.event_simulation), .001, 0)
+        self.os = ObjectStoreRuntime(self.event_simulation, PrintingLogger(self.event_simulation), .001, 0, NoopObjectCache)
         self.last_ready = defaultdict(list)
         self.size_locations = {}
 
@@ -653,6 +653,9 @@ class TestNodeRuntime(unittest.TestCase):
                         )
                     )
 
+        def use_object(self, object_id, node_id):
+            pass
+
         def get_locations(self, object_id):
             raise NotImplementedError()
 
@@ -661,6 +664,10 @@ class TestNodeRuntime(unittest.TestCase):
             #raise NotImplementedError()
 
         def is_local(self, object_id, node_id):
+            # TODO - should be returning an ObjectStatus here
+            return str(node_id) in self._object_locations[str(object_id)]
+
+        def is_locally_ready(self, object_id, node_id):
             return str(node_id) in self._object_locations[str(object_id)]
 
         def require_object(self, object_id, node_id, on_done):

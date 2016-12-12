@@ -44,6 +44,7 @@ def replay_trace(config):
             '{:f}'.format(config['object_transfer_time_cost']),
             '{:f}'.format(config['db_message_delay']),
             str(config['scheduler']),
+            str(config['cache_policy']),
             str(config['validate']),
             local_tracefile
         ], stdout=PIPE, stderr=PIPE, env=env)

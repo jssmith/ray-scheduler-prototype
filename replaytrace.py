@@ -24,19 +24,27 @@ schedulers = {
     'location_aware_threshold_local' : LocationAwareThresholdLocalScheduler
 }
 
+cache_policies = {
+  'noop' : replaystate.NoopObjectCache,
+  'fifo' : replaystate.FIFOObjectCache,
+  'lru' : replaystate.LRUObjectCache
+}
+
 def usage():
     print("Usage: python replaytrace.py <config filename>; example config can "
           "be found in default_config.py")
     print("OR test_scheduler num_nodes num_workers_per_node "
-          "object_transfer_time_cost db_message_delay scheduler "
+          "object_transfer_time_cost db_message_delay "
+          "scheduler cache_policy"
           "enable_verification=<true|false> input.json")
     print("Available Schedulers: %s" %schedulers.keys())
+    print("Available Cache Policies: %s" %cache_policies.keys())
 
 
 def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
              num_workers_per_node, object_transfer_time_cost, db_message_delay,
              global_scheduler_kwargs=None, local_scheduler_kwargs=None,
-             enable_analysis=False):
+             enable_analysis=False, cache_policy_class=replaystate.NoopObjectCache):
     if global_scheduler_kwargs is None:
         global_scheduler_kwargs = {}
     if local_scheduler_kwargs is None:
@@ -44,7 +52,8 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
     object_store = replaystate.ObjectStoreRuntime(event_simulation,
                                                   logger,
                                                   object_transfer_time_cost,
-                                                  db_message_delay)
+                                                  db_message_delay,
+                                                  cache_policy_class)
     scheduler_db = replaystate.ReplaySchedulerDatabase(event_simulation, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
     local_nodes = {}
     local_runtimes = {}
@@ -82,12 +91,16 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
         return True
 
 def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
-               db_message_delay, scheduler_name, trace_filename,
+               db_message_delay, scheduler_name, cache_policy_name, trace_filename,
                global_scheduler_kwargs, local_scheduler_kwargs,
                enable_verification=True):
     scheduler_cls = schedulers.get(scheduler_name)
     if scheduler_cls is None:
         print 'Error - unrecognized scheduler'
+        sys.exit(1)
+    cache_policy_class = cache_policies.get(cache_policy_name)
+    if cache_policy_class is None:
+        print 'Error - unrecognized cache policy'
         sys.exit(1)
     if trace_filename.endswith('.gz'):
         f = gzip.open(trace_filename, 'rb')
@@ -108,7 +121,8 @@ def run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
     logger = statslogging.CompoundLogger([printing_logger, stats_logger, event_log_logger])
     simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
              num_workers_per_node, object_transfer_time_cost, db_message_delay,
-             global_scheduler_kwargs, local_scheduler_kwargs)
+             global_scheduler_kwargs, local_scheduler_kwargs,
+             cache_policy_class=cache_policy_class)
 
 def run_replay_from_sys_argv(args):
     num_nodes = int(args[1])
@@ -116,10 +130,12 @@ def run_replay_from_sys_argv(args):
     object_transfer_time_cost = float(args[3])
     db_message_delay = float(args[4])
     scheduler_name = args[5]
-    enable_verification = args[6] == 'true'
-    trace_filename = args[7]
+    cache_policy_name = args[6]
+    enable_verification = args[7] == 'true'
+    trace_filename = args[8]
     run_replay(num_nodes, num_workers_per_node, object_transfer_time_cost,
-               db_message_delay, scheduler_name, trace_filename, {}, {},
+               db_message_delay, scheduler_name, cache_policy_name,
+               trace_filename, {}, {},
                enable_verification=enable_verification)
 
 def run_replay_from_config(config_filename):
@@ -151,7 +167,7 @@ def run_replay_from_config(config_filename):
 if __name__ == '__main__':
     if len(sys.argv) == 2:
         run_replay_from_config(sys.argv[1])
-    elif len(sys.argv) == 8:
+    elif len(sys.argv) == 9:
         run_replay_from_sys_argv(sys.argv)
     else:
         usage()

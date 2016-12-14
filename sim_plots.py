@@ -75,7 +75,7 @@ def plot_timeseries(data,
     pdf.savefig(fig)
     plt.close(fig)
 
-def plot_worker_activity(data, pdf):
+def plot_worker_activity(data, pdf, title=None):
     workers = sorted(data.keys())
 
     width = .8
@@ -120,7 +120,10 @@ def plot_worker_activity(data, pdf):
     ax.set_yticklabels(map(lambda x: str(x), workers))
     ax.set_xlabel('Time [seconds]')
 
-    ax.set_title('Worker Activity')
+    if title is not None:
+        ax.set_title(title)
+    else:
+        ax.set_title('Worker Activity')
 
     pdf.savefig(fig)
     plt.close(fig)

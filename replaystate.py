@@ -49,6 +49,9 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
             self._logger.task_scheduled(task.id(), submitting_node_id, True)
         self._yield_global_scheduler_update(ForwardTaskUpdate(task, submitting_node_id, is_scheduled_locally))
 
+    def increment_workers(self, submitting_node_id, increment):
+        self._yield_global_scheduler_update(AddWorkerUpdate(submitting_node_id, increment=increment))
+
     def finished(self, task_id):
         #if task_id != self.root_task_id:
         self._yield_global_scheduler_update(FinishTaskUpdate(task_id))
@@ -464,7 +467,8 @@ class NodeRuntime():
         self._event_simulation.schedule_delayed(task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id)))
 
     def _internal_scheduler_schedule(self, task_id, phase_id):
-        task_phase = self._computation.get_task(task_id).get_phase(phase_id)
+        task = self._computation.get_task(task_id)
+        task_phase = task.get_phase(phase_id)
         depends_on = task_phase.depends_on
         needs = self.Dependencies(self, task_id, phase_id)
         for d_object_id in depends_on:
@@ -472,6 +476,9 @@ class NodeRuntime():
                 needs.add_object_dependency(d_object_id)
                 self._object_store.require_object(d_object_id, self.node_id, lambda d_object_id=d_object_id: needs.object_available(d_object_id))
         if not needs.has_dependencies():
+            if task.is_root and phase_id == 0:
+                self._yield_update(AddWorkerUpdate())
+                self.num_workers += 1
             self._execute_phase_immediate(task_id, phase_id)
         else:
             self._pylogger.debug('task {} phase {} waiting for dependencies: {}'.format(task_id, phase_id, str(needs.object_dependencies)))
@@ -494,6 +501,8 @@ class NodeRuntime():
                 for res in task.get_results():
                     self._object_store.add_object(res. object_id, self.node_id, res.size)
                 self._yield_update(FinishTaskUpdate(update.task_id))
+                if task.is_root:
+                    self._yield_update(AddWorkerUpdate(increment=-1))
                 self.num_workers_executing -= 1
                 self._task_times.append(self._event_simulation.get_time() - self._task_start_times_map.get(update.task_id, 0)) 
                 #print "task_times: {}".format(self._task_times)
@@ -610,7 +619,8 @@ class ComputationDescription():
 
         self._root_task = str(root_task)
         self._tasks = tasks_map
-        self.assign_task_depths()
+        self._tasks[self._root_task].is_root = True
+        #self.assign_task_depths()
 
     def assign_task_depths(self):
         root_task = self._tasks[self._root_task]
@@ -823,6 +833,8 @@ class Task():
 
         # Depth is assigned by ComputationDescription
         self.depth = None
+
+        self.is_root = False
 
     def id(self):
         return self._task_id

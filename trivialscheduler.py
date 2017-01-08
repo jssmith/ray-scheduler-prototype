@@ -89,6 +89,8 @@ class GlobalSchedulerState():
             self._object_ready(update.object_description.object_id,
                                update.submitting_node_id,
                                update.object_description.size)
+        elif isinstance(update, AddWorkerUpdate):
+            self.nodes[update.node_id].num_workers += update.increment
         else:
             raise NotImplementedError('Unknown update {}'.format(update.__class__.__name__))
 
@@ -704,6 +706,8 @@ class PassthroughLocalScheduler():
         elif isinstance(update, SubmitTaskUpdate):
 #            print "Forwarding task " + str(update.task)
             self._scheduler_db.submit(update.task, self._node_runtime.node_id, self._schedule_locally(update.task))
+        elif isinstance(update, AddWorkerUpdate):
+            self._scheduler_db.increment_workers(self._node_id, update.increment)
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
@@ -741,6 +745,8 @@ class FlexiblePassthroughLocalScheduler():
         elif isinstance(update, SubmitTaskUpdate):
 #            print "Forwarding task " + str(update.task)
             self._filter_forward(update.task)        
+        elif isinstance(update, AddWorkerUpdate):
+            self._scheduler_db.increment_workers(self._node_id, update.increment)
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 

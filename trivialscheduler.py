@@ -147,13 +147,15 @@ class GlobalSchedulerState():
         """
         return node_id in self.finished_objects[object_id]
 
+
 class BaseGlobalScheduler():
 
-    def __init__(self, system_time, scheduler_db, event_loop):
+    def __init__(self, system_time, scheduler_db, event_loop, global_state=None):
         self._system_time = system_time
         self._db = scheduler_db
         self._event_loop = event_loop
-        self._state = GlobalSchedulerState(system_time)
+        #self._state = GlobalSchedulerState(system_time)
+        self._state = global_state
         scheduler_db.get_global_scheduler_updates(lambda update: self._handle_update(update))
 
     def _execute_task(self, node_id, task_id):
@@ -186,10 +188,10 @@ class BaseGlobalScheduler():
 
 class TrivialGlobalScheduler(BaseGlobalScheduler):
 
-    def __init__(self, system_time, scheduler_db, event_loop):
+    def __init__(self, system_time, scheduler_db, event_loop, **kwargs):
         self._pylogger = TimestampedLogger(__name__+'.TrivialGlobalScheduler', system_time)
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db,
-                                     event_loop)
+                                     event_loop, **kwargs)
 
     def _select_node(self, task_id):
         self._pylogger.debug("Runnable tasks are {}, checking task {}".format(
@@ -209,10 +211,10 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
 
 class TrivialDFPriorityGlobalScheduler(TrivialGlobalScheduler):
 
-    def __init__(self, system_time, scheduler_db, event_loop):
+    def __init__(self, system_time, scheduler_db, event_loop, **kwargs):
         self._pylogger = TimestampedLogger(__name__+'.TrivialDFPriorityGlobalScheduler', system_time)
         TrivialGlobalScheduler.__init__(self, system_time, scheduler_db,
-                                        event_loop)
+                                        event_loop, **kwargs)
 
     def _process_tasks(self):
         runnable_tasks = map(lambda task_id: self._state.tasks[task_id], self._state.runnable_tasks)
@@ -231,10 +233,10 @@ class TrivialDFPriorityGlobalScheduler(TrivialGlobalScheduler):
 
 class TrivialPriorityGlobalScheduler(TrivialGlobalScheduler):
 
-    def __init__(self, system_time, scheduler_db, event_loop):
+    def __init__(self, system_time, scheduler_db, event_loop, **kwargs):
         self._pylogger = TimestampedLogger(__name__+'.TrivialPriorityGlobalScheduler', system_time)
         TrivialGlobalScheduler.__init__(self, system_time, scheduler_db,
-                                        event_loop)
+                                        event_loop, **kwargs)
 
     def _process_tasks(self):
 #        print "global scheduler processing tasks, runnable number {} | {}".format(len(self._state.runnable_tasks), self._state.runnable_tasks)
@@ -263,9 +265,9 @@ class TrivialPriorityGlobalScheduler(TrivialGlobalScheduler):
 
 class LocationAwareGlobalScheduler(BaseGlobalScheduler):
 
-    def __init__(self, system_time, scheduler_db, event_loop):
+    def __init__(self, system_time, scheduler_db, event_loop, **kwargs):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db,
-                                     event_loop)
+                                     event_loop, **kwargs)
 
     def _select_node(self, task_id):
         task_deps = self._state.tasks[task_id].get_depends_on()
@@ -286,9 +288,9 @@ class LocationAwareGlobalScheduler(BaseGlobalScheduler):
 
 class DelayGlobalScheduler(BaseGlobalScheduler):
 
-    def __init__(self, system_time, scheduler_db, event_loop, delay=1):
+    def __init__(self, system_time, scheduler_db, event_loop, delay=1, **kwargs):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db,
-                                     event_loop)
+                                     event_loop, **kwargs)
         self._pylogger = TimestampedLogger(__name__+'.DelayGlobalScheduler', system_time)
         self._WaitingInfo = namedtuple('WaitingInfo', ['start_waiting_time', 'expiration_time'])
         self._waiting_tasks = OrderedDict()
@@ -358,9 +360,9 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
 
 class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
 
-    def __init__(self, system_time, scheduler_db, event_loop):
+    def __init__(self, system_time, scheduler_db, event_loop, **kwargs):
         BaseGlobalScheduler.__init__(self, system_time, scheduler_db,
-                                     event_loop)
+                                     event_loop, **kwargs)
         self._pylogger = TimestampedLogger(__name__ + '.TransferCostAwareGlobalScheduler', system_time)
         self._schedcycle = 1; #seconds
         self._initializing = True
@@ -683,7 +685,7 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
 
 
 class PassthroughLocalScheduler():
-    def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
+    def __init__(self, system_time, node_runtime, scheduler_db, event_loop, **kwargs):
         self._pylogger = TimestampedLogger(__name__+'.PassthroughLocalScheduler', system_time)
 
         self._system_time = system_time
@@ -720,7 +722,7 @@ class PassthroughLocalScheduler():
 
 
 class FlexiblePassthroughLocalScheduler():
-    def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
+    def __init__(self, system_time, node_runtime, scheduler_db, event_loop, **kwargs):
         self._pylogger = TimestampedLogger(__name__+'.FlexiblePassthroughLocalScheduler', system_time)
 
         self._system_time = system_time
@@ -760,9 +762,9 @@ class FlexiblePassthroughLocalScheduler():
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
 class SimpleLocalScheduler(PassthroughLocalScheduler):
-    def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
+    def __init__(self, system_time, node_runtime, scheduler_db, event_loop, **kwargs):
         PassthroughLocalScheduler.__init__(self, system_time, node_runtime,
-                                           scheduler_db, event_loop)
+                                           scheduler_db, event_loop, **kwargs)
 
     def _schedule_locally(self, task):
         if self._node_runtime.free_workers() == 0:
@@ -776,25 +778,75 @@ class SimpleLocalScheduler(PassthroughLocalScheduler):
 
 
 class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
-    def __init__(self, system_time, node_runtime, scheduler_db, event_loop):
+    def __init__(self, system_time, node_runtime, scheduler_db, event_loop, global_state=None):
         FlexiblePassthroughLocalScheduler.__init__(self, system_time, node_runtime,
                                            scheduler_db, event_loop)
         self._pylogger = TimestampedLogger(__name__+'.ThresholdLocalScheduler', system_time)
         self._size_location_results = defaultdict(list)
         self._size_location_awaiting_results = defaultdict(set)
         self._scheduled_tasks = []
+        self._global_load_timer_interval = 0.001
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
         #self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) / float(self._node_runtime.num_nodes)
-        self.threshold1l =  float(os.getenv('RAY_SCHED_THRESHOLD1L', 1.8)) * self._node_runtime.num_workers / (self._node_runtime.num_nodes)
+        self.threshold1l =  float(os.getenv('RAY_SCHED_THRESHOLD1L', 1))*self._global_load_timer_interval
         #self.threshold1h = float(os.getenv('RAY_SCHED_THRESHOLD1H', 8)) / float(self._node_runtime.num_nodes)
-        self.threshold1h = self.threshold1l * 3
-        self.threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 5)
+        self.threshold1h = self.threshold1l * 2
+        self.threshold2 = os.getenv('RAY_SCHED_THRESHOLD2', 5)*self._global_load_timer_interval
         #print "threshold scheduler: threshold1l is {}".format(self.threshold1l)
         #print "threshold scheduler: threshold1h is {}".format(self.threshold1h)
         #print "threshold scheduler: threshold2 is {}".format(self.threshold2)
         self.avg_data_transfer_cost = os.getenv('AVG_DTC', 0.00000001)
-        self.avg_message_db_delay = os.getenv('AVG_MDBD', 0.001)
+        self.avg_message_db_delay = os.getenv('AVG_MDBD', 0.001) 
+        self._event_loop.add_timer(self._global_load_timer_interval, ThresholdLocalScheduler._global_load_timer_handler, (self, ))
+        self._global_state = global_state
+        self._global_load = 0
+        self._initializing = True
+
+    @staticmethod
+    def _global_load_timer_handler(context):
+        (self, ) = context
+#        self._pylogger.debug('local node recieved global load')
+#        _get_global_load()
+        print 'runnable is {} and pending is {}'.format(len(self._global_state.runnable_tasks), len(self._global_state.pending_tasks))
+        global_load = len(self._global_state.pending_tasks) + len(self._global_state.runnable_tasks)
+        self._global_load = global_load
+        self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 3)) * float(global_load) * float(self._node_runtime.get_avg_task_time()) / float(self._node_runtime.num_nodes)
+        self.threshold1h = self.threshold1l * 1.3      
+        self.threshold2 = float(os.getenv('RAY_SCHED_THRESHOLD1L', 3)) * float(global_load) * float(self._node_runtime.get_avg_task_time()) / float(self._node_runtime.num_nodes)
+
+        #reset timer and termination condition
+        num_runnable = len(self._global_state.runnable_tasks)
+        num_pending = len(self._global_state.pending_tasks)
+        num_executing = len(self._global_state.executing_tasks)
+        num_tasks_total = num_runnable + num_pending + num_executing
+        num_tasks_finished = len(self._global_state.finished_tasks)
+        
+        #always want to set, except one case: when total_tasks==0 AND not initializing
+        if num_tasks_total > 0 and self._initializing:
+            #done initializing
+            self._initializing = False
+
+        if num_tasks_total == 0 and not self._initializing:
+            #termination condition, reached zero task count, return
+            return
+
+
+        self._event_loop.add_timer(self._global_load_timer_interval, ThresholdLocalScheduler._global_load_timer_handler, (self, ))
+
+
+#    def _get_global_load():
+#        self._pylogger.debug('querring for global load')
+#        handler = lambda: _global_load_result_handler(len(global_state.pending_tasks) + len(global_state.runnable_tasks))
+#        self._event_simulation.schedule_delayed(self.scheduler_db._db_message_delay, handler)
+#
+
+
+#   def _global_load_result_handler():
+#        self._global_load.append(global_load)
+#        self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 1.3)) * global_load * self._node_runtime.get_avg_task_time()
+#        self.threshold1h = self.threshold1l * 2
+
 
     def _size_location_result_handler(self, task, object_id, object_size, object_locations):
         task_id = task.id()
@@ -835,7 +887,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
 
                 if ready_remote_transfer_size != 0:
                     #task_load = ready_remote_transfer_size
-                    task_load = ready_remote_transfer_size * self.avg_data_transfer_cost if self.avg_message_db_delay==0 else ready_remote_transfer_size * self.avg_data_transfer_cost / self.avg_message_db_delay
+                    task_load = ready_remote_transfer_size * self.avg_data_transfer_cost if self.avg_message_db_delay==0 else ready_remote_transfer_size * self.avg_data_transfer_cost  + 2*self.avg_message_db_delay
                 self._pylogger.debug('task load is {}'.format(task_load))
              
                 if float(task_load) > float(self.threshold2) :
@@ -869,7 +921,8 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._pylogger.debug('node_efficiency_rate is {}'.format(node_efficiency_rate))
         self._pylogger.debug('avg_task_time is {}'.format(avg_task_time))
         self._pylogger.debug('dispatcher_load is {}'.format(dispatcher_load))
-        local_load = 0 if (node_efficiency_rate == 0 or avg_task_time == 0) else (((dispatcher_load+self._node_runtime.num_workers_executing) / node_efficiency_rate) / avg_task_time)
+        #local_load = 0 if (node_efficiency_rate == 0 or avg_task_time == 0) else (((dispatcher_load+self._node_runtime.num_workers_executing) / node_efficiency_rate))
+        local_load = 0 if (node_efficiency_rate == 0 or avg_task_time == 0) else ((dispatcher_load+self._node_runtime.num_workers_executing) * avg_task_time)
         self._pylogger.debug('local load is {}'.format(local_load))
 
         for d_object_id in task.get_phase(0).depends_on:
@@ -912,7 +965,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
             for remote_object_id in remote_objects:
                 self._size_location_awaiting_results[task.id()].add(remote_object_id)
             for remote_object_id in remote_objects:
-                self._pylogger.debug('querring for remote object size')
+                self._pylogger.debug('local load {} is medium, because threshold is between {} and {}, so querring for remote object size'.format(local_load,self.threshold1l,self.threshold1h))
                 self._node_runtime.get_object_size_locations(remote_object_id,
                     lambda object_id, size, object_locations:
                     self._size_location_result_handler(task, object_id, size, object_locations))

@@ -57,6 +57,10 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
     scheduler_db = replaystate.ReplaySchedulerDatabase(event_simulation, logger, computation, num_nodes, num_workers_per_node, object_transfer_time_cost, db_message_delay)
     local_nodes = {}
     local_runtimes = {}
+    system_time = replaystate.SystemTime(event_simulation)
+    global_state = GlobalSchedulerState(system_time)
+    local_scheduler_kwargs['global_state'] = global_state
+    global_scheduler_kwargs['global_state'] = global_state 
     for node_id in range(0, num_nodes):
         local_runtime = replaystate.NodeRuntime(event_simulation, object_store,
                                                 logger, computation, node_id,
@@ -64,7 +68,7 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
         local_event_loop = replaystate.EventLoop(event_simulation)
         local_nodes[node_id] = (local_runtime, local_event_loop)
         local_runtimes[node_id] = local_runtime
-    schedulers = scheduler_cls(replaystate.SystemTime(event_simulation), scheduler_db,
+    schedulers = scheduler_cls(system_time, scheduler_db,
                                replaystate.EventLoop(event_simulation),
                                global_scheduler_kwargs, local_scheduler_kwargs,
                                local_nodes=local_nodes)

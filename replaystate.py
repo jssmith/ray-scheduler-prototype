@@ -243,6 +243,7 @@ class ObjectStoreRuntime():
     def is_locally_ready(self, object_id, node_id):
         return self.is_local(object_id, node_id) == ObjectStatus.READY
 
+
     def get_object_size(self, node_id, object_id, result_handler):
         handler = lambda: result_handler(self._object_sizes(object_id))
         # Add a delay if the object is not local to the node that requested it.
@@ -345,7 +346,7 @@ class NodeRuntime():
         self.num_nodes = num_nodes
         self.num_workers_executing = 0
 
-        self._time_buffer_size = 10
+        self._time_buffer_size = 30
         self._task_start_times = deque([0], self._time_buffer_size)   
         self._task_times = deque([], self._time_buffer_size)
         self._task_start_times_map = {}

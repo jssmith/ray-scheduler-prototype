@@ -1,6 +1,14 @@
 import abc
 import types
 
+class AddWorkerUpdate():
+    def __init__(self, node_id=None, increment=1):
+        self.node_id = str(node_id)
+        self.increment = increment
+
+    def __str__(self):
+        return 'AddWorkerUpdate'
+
 class SubmitTaskUpdate():
     def __init__(self, task):
         self.task = task

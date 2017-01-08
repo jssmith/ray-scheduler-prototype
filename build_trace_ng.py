@@ -45,9 +45,10 @@ def read_event_logs(r):
                         'event': 'PHASE_END',
                         }
             elif event_type == "ray:get" and kind == LOG_SPAN_END:
+                object_ids = contents['object_ids'].split()
                 event_dict = {
                         'event': 'PHASE_BEGIN',
-                        'dependsOn': [contents['object_id']],
+                        'dependsOn': object_ids,
                         }
             elif event_type == "ray:task" and kind == LOG_SPAN_END:
                 result_ids = contents['results'].split()

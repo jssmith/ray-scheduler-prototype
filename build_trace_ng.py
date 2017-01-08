@@ -1,4 +1,5 @@
 import os
+import time
 import sys
 import simplejson as json
 from collections import defaultdict
@@ -229,7 +230,8 @@ if __name__ == '__main__':
         trace_filename = sys.argv[1]
     print 'Dumping trace built to {0}'.format(trace_filename)
 
-    p = subprocess.Popen(["/home/stephanie/redis/src/redis-server"])
+    p = subprocess.Popen(["redis-server"], stdout=subprocess.PIPE)
+    time.sleep(1)
 
     r = redis.StrictRedis()
     event_logs, task_dependencies = read_event_logs(r)
@@ -239,4 +241,4 @@ if __name__ == '__main__':
         tasks += build_tasks(task_dependencies, event_log, task_roots)
     dump_tasks(task_roots, tasks, trace_filename)
 
-    p.terminate()
+    p.kill()

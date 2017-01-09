@@ -791,7 +791,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._size_location_results = defaultdict(list)
         self._size_location_awaiting_results = defaultdict(set)
         self._scheduled_tasks = []
-        self._global_load_timer_interval = 0.0001
+        self._global_load_timer_interval = 0.001
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
         #self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) / float(self._node_runtime.num_nodes)
@@ -817,9 +817,9 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         print 'runnable is {} and pending is {}'.format(len(self._global_state.runnable_tasks), len(self._global_state.pending_tasks))
         global_load = len(self._global_state.pending_tasks) + len(self._global_state.runnable_tasks)
         self._global_load = global_load
-        self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 3)) * float(global_load) * float(self._node_runtime.get_avg_task_time()) / float(self._node_runtime.num_nodes)
+        self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) * float(global_load) * float(self._node_runtime.get_avg_task_time()) / float(self._node_runtime.num_nodes)
         self.threshold1h = self.threshold1l * 1.3      
-        self.threshold2 = float(os.getenv('RAY_SCHED_THRESHOLD1L', 3)) * float(global_load) * float(self._node_runtime.get_avg_task_time()) / float(self._node_runtime.num_nodes)
+        self.threshold2 = float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) * float(global_load) * float(self._node_runtime.get_avg_task_time()) / float(self._node_runtime.num_nodes)
 
         #reset timer and termination condition
         num_runnable = len(self._global_state.runnable_tasks)

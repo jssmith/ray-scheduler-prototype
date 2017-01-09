@@ -1,0 +1,309 @@
+{
+    "rootTask": "0",
+    "tasks": [
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.00027489662170410156,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "f7f6bc4af38057f8541643663d475515e4a9a985",
+                    "size": "26984"
+                }
+            ],
+            "taskId": "f6f6bc4af38057f8541643663d475515e4a9a985"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0003008842468261719,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "beb101e44e58ce9f30b65d42eeffda46355860ae",
+                    "size": "28392"
+                }
+            ],
+            "taskId": "bfb101e44e58ce9f30b65d42eeffda46355860ae"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0004961490631103516,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "020da3abe7c4f250b04cbda6a8f023f570055b1b",
+                    "size": "25512"
+                }
+            ],
+            "taskId": "030da3abe7c4f250b04cbda6a8f023f570055b1b"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        "930de791296cb0d978b7d98b194792c22e954a44",
+                        "beb101e44e58ce9f30b65d42eeffda46355860ae"
+                    ],
+                    "duration": 0.001422882080078125,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "b07fe638de21eef429616f00a2ac23705c3197ac",
+                    "size": "23016"
+                }
+            ],
+            "taskId": "b17fe638de21eef429616f00a2ac23705c3197ac"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.0002789497375488281,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "b9467bdc743fd6cfb60eb5cfc96d88db5fed4757",
+                    "size": "27688"
+                }
+            ],
+            "taskId": "b8467bdc743fd6cfb60eb5cfc96d88db5fed4757"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        "2e844c8f40d3322a3a31982e33fee65b1db4ddf7",
+                        "b9467bdc743fd6cfb60eb5cfc96d88db5fed4757"
+                    ],
+                    "duration": 0.0014200210571289062,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "930de791296cb0d978b7d98b194792c22e954a44",
+                    "size": "22632"
+                }
+            ],
+            "taskId": "920de791296cb0d978b7d98b194792c22e954a44"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        "b07fe638de21eef429616f00a2ac23705c3197ac"
+                    ],
+                    "duration": 0.0011990070343017578,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "80201d3054b99b2cb7a4bbc8b96e19373c44a7cd",
+                    "size": "26984"
+                }
+            ],
+            "taskId": "81201d3054b99b2cb7a4bbc8b96e19373c44a7cd"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        "30d09943765d8d89af7bd4ff02479e1574eb0211",
+                        "f16cc2c3f557611a88de081f1b93ad46fd5db8b4"
+                    ],
+                    "duration": 0.0014269351959228516,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "fa3ed9d1e34b5245fb73cfe4e88f18706385fcd7",
+                    "size": "21928"
+                }
+            ],
+            "taskId": "fb3ed9d1e34b5245fb73cfe4e88f18706385fcd7"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        "fecf45c44dbd1ce6f2bea998e36faba2ef23d641",
+                        "020da3abe7c4f250b04cbda6a8f023f570055b1b"
+                    ],
+                    "duration": 0.0015950202941894531,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "30d09943765d8d89af7bd4ff02479e1574eb0211",
+                    "size": "21544"
+                }
+            ],
+            "taskId": "31d09943765d8d89af7bd4ff02479e1574eb0211"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.4175701141357422,
+                    "phaseId": 0,
+                    "submits": [
+                        {
+                            "taskId": "030da3abe7c4f250b04cbda6a8f023f570055b1b",
+                            "timeOffset": 0.41721415519714355
+                        },
+                        {
+                            "taskId": "f06cc2c3f557611a88de081f1b93ad46fd5db8b4",
+                            "timeOffset": 0.41725921630859375
+                        },
+                        {
+                            "taskId": "f6f6bc4af38057f8541643663d475515e4a9a985",
+                            "timeOffset": 0.4172961711883545
+                        },
+                        {
+                            "taskId": "b8467bdc743fd6cfb60eb5cfc96d88db5fed4757",
+                            "timeOffset": 0.4173290729522705
+                        },
+                        {
+                            "taskId": "bfb101e44e58ce9f30b65d42eeffda46355860ae",
+                            "timeOffset": 0.4173622131347656
+                        },
+                        {
+                            "taskId": "ffcf45c44dbd1ce6f2bea998e36faba2ef23d641",
+                            "timeOffset": 0.41739320755004883
+                        },
+                        {
+                            "taskId": "31d09943765d8d89af7bd4ff02479e1574eb0211",
+                            "timeOffset": 0.4174220561981201
+                        },
+                        {
+                            "taskId": "fb3ed9d1e34b5245fb73cfe4e88f18706385fcd7",
+                            "timeOffset": 0.4174480438232422
+                        },
+                        {
+                            "taskId": "2f844c8f40d3322a3a31982e33fee65b1db4ddf7",
+                            "timeOffset": 0.41747307777404785
+                        },
+                        {
+                            "taskId": "920de791296cb0d978b7d98b194792c22e954a44",
+                            "timeOffset": 0.4174981117248535
+                        },
+                        {
+                            "taskId": "b17fe638de21eef429616f00a2ac23705c3197ac",
+                            "timeOffset": 0.4175221920013428
+                        },
+                        {
+                            "taskId": "81201d3054b99b2cb7a4bbc8b96e19373c44a7cd",
+                            "timeOffset": 0.41756200790405273
+                        }
+                    ]
+                },
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        "80201d3054b99b2cb7a4bbc8b96e19373c44a7cd"
+                    ],
+                    "duration": 0.00021886825561523438,
+                    "phaseId": 1,
+                    "submits": []
+                }
+            ],
+            "results": [],
+            "taskId": "0"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [
+                        "fa3ed9d1e34b5245fb73cfe4e88f18706385fcd7",
+                        "f7f6bc4af38057f8541643663d475515e4a9a985"
+                    ],
+                    "duration": 0.0014050006866455078,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "2e844c8f40d3322a3a31982e33fee65b1db4ddf7",
+                    "size": "22312"
+                }
+            ],
+            "taskId": "2f844c8f40d3322a3a31982e33fee65b1db4ddf7"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.00032591819763183594,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "fecf45c44dbd1ce6f2bea998e36faba2ef23d641",
+                    "size": "24808"
+                }
+            ],
+            "taskId": "ffcf45c44dbd1ce6f2bea998e36faba2ef23d641"
+        },
+        {
+            "phases": [
+                {
+                    "creates": [],
+                    "dependsOn": [],
+                    "duration": 0.00028014183044433594,
+                    "phaseId": 0,
+                    "submits": []
+                }
+            ],
+            "results": [
+                {
+                    "objectId": "f16cc2c3f557611a88de081f1b93ad46fd5db8b4",
+                    "size": "26216"
+                }
+            ],
+            "taskId": "f06cc2c3f557611a88de081f1b93ad46fd5db8b4"
+        }
+    ]
+}

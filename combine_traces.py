@@ -171,6 +171,7 @@ def merge_computations(computations, offsets):
     computation = ComputationDescription(root_task_id, [
         Task(root_task_id, [root_phase], []),
         ])
+    computation.mark_combined()
 
     # Merge the computations into the mock computation.
     task_ids = None
@@ -222,6 +223,7 @@ def serialize_computation(computation):
     json_dict = {
             'rootTask': computation._root_task,
             'tasks': tasks,
+            'is_combined': True,
             }
     return json.dumps(json_dict,
                       sort_keys=True,

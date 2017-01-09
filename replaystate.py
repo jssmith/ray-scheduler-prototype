@@ -503,6 +503,7 @@ class NodeRuntime():
                 self._yield_update(FinishTaskUpdate(update.task_id))
                 if task.is_root:
                     self._yield_update(AddWorkerUpdate(increment=-1))
+                    self.num_workers -= 1
                 self.num_workers_executing -= 1
                 self._task_times.append(self._event_simulation.get_time() - self._task_start_times_map.get(update.task_id, 0)) 
                 #print "task_times: {}".format(self._task_times)
@@ -601,7 +602,7 @@ class EventLoop():
 #              Data model for saved computations               #
 ################################################################
 class ComputationDescription():
-    def __init__(self, root_task, tasks):
+    def __init__(self, root_task, tasks, is_combined=False):
         if root_task is None:
             if len(tasks) != 0:
                 raise ValidationError('Too many tasks are called')
@@ -621,6 +622,19 @@ class ComputationDescription():
         self._tasks = tasks_map
         self._tasks[self._root_task].is_root = True
         #self.assign_task_depths()
+
+        if is_combined:
+            self.mark_combined()
+        else:
+            self.is_combined = False
+
+    def mark_combined(self):
+        self.is_combined = True
+        root = self._tasks[self._root_task]
+        num_phases = root.num_phases()
+        assert(num_phases == 1)
+        for submit in root.get_phase(0).submits:
+            self._tasks[submit.task_id].is_root = True
 
     def assign_task_depths(self):
         root_task = self._tasks[self._root_task]
@@ -1019,6 +1033,8 @@ def computation_decoder(dict):
         return Task(dict[u'taskId'], dict[u'phases'], dict[u'results'])
     if keys == frozenset([u'tasks', u'rootTask']):
         return ComputationDescription(dict[u'rootTask'], dict[u'tasks'])
+    if keys == frozenset([u'tasks', u'rootTask', u'is_combined']):
+        return ComputationDescription(dict[u'rootTask'], dict[u'tasks'], dict[u'is_combined'])
     if keys == frozenset([u'objectId', u'size']):
         return TaskResult(dict[u'objectId'], int(dict[u'size']))
     if keys == frozenset([u'objectId', u'size', u'timeOffset']):

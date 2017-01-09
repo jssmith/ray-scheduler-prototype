@@ -3,11 +3,12 @@ import subprocess32 as subprocess
 import simplejson as json
 
 RAY_LOG_DIRECTORY = "/tmp/raylogs"
-RUN_WORKLOAD_SCRIPT = "../workloads/mat_mult.py"
+RAY_LOGS = "dump.rdb"
+RUN_WORKLOAD_SCRIPT = "../tree_reduce.py"
 BLOCK_SIZE = 100
 NUM_BLOCKS = 10
 
-BUILD_TRACE_SCRIPT = "../build_trace.py"
+BUILD_TRACE_SCRIPT = "../build_trace_ng.py"
 
 REPLAY_TRACE_SCRIPT = "../replaytrace.py"
 NUM_NODES = 1  # Single node.
@@ -20,15 +21,11 @@ def get_trace_filename(num_workers):
 
 def run_workload(num_workers):
     # Clear the log directory.
-    if os.path.exists(RAY_LOG_DIRECTORY):
-        for filename in os.listdir(RAY_LOG_DIRECTORY):
-            filename = os.path.join(RAY_LOG_DIRECTORY, filename)
-            os.unlink(filename)
+    if os.path.exists(RAY_LOGS):
+        os.unlink(RAY_LOGS)
 
     # Run the workload.
     proc = subprocess.Popen(["python", RUN_WORKLOAD_SCRIPT,
-                             "--block-size", str(BLOCK_SIZE),
-                             "--size", str(NUM_BLOCKS * BLOCK_SIZE),
                              "--workers", str(num_workers),
                              ],
                             stdout=subprocess.PIPE
@@ -43,7 +40,7 @@ def run_workload(num_workers):
             continue
 
     # Build the trace.
-    proc = subprocess.Popen(["python", "../build_trace.py", RAY_LOG_DIRECTORY,
+    proc = subprocess.Popen(["python", BUILD_TRACE_SCRIPT,
                              get_trace_filename(num_workers)])
     proc.wait()
     return runtime
@@ -57,6 +54,7 @@ def run_simulation(num_workers, num_simulation_workers):
                                  str(DATA_TRANSFER_COST),
                                  str(DB_MESSAGE_DELAY),
                                  RAY_SCHEDULER,
+                                 "lru",
                                  "true",
                                  trace_filename,
                                  ],
@@ -66,7 +64,7 @@ def run_simulation(num_workers, num_simulation_workers):
     proc.wait()
     output = proc.stdout.read()
     lines = output.split('\n')
-    runtime = float(lines[-3].split(':')[0])
+    runtime = float(lines[-1].split(':')[0])
     return runtime
 
 def generate_data(min_num_workers, max_num_workers, step_size):
@@ -85,7 +83,7 @@ def generate_data(min_num_workers, max_num_workers, step_size):
                 ))
         actual_runtimes.append((num_workers, actual_runtime))
         simulation_runtimes = []
-        print ("Running simulations for {} workers".format(num_workers))
+        #print ("Running simulations for {} workers".format(num_workers))
         for num_simulation_workers in num_workers_range:
             simulation_runtime = run_simulation(num_workers, num_simulation_workers)
             simulation_runtimes.append((num_simulation_workers, simulation_runtime))

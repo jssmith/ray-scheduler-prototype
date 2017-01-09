@@ -791,7 +791,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._size_location_results = defaultdict(list)
         self._size_location_awaiting_results = defaultdict(set)
         self._scheduled_tasks = []
-        self._global_load_timer_interval = 0.001
+        self._global_load_timer_interval = 0.0001
         #get threshold from unix environment variables, so I can sweep over them later in the bash sweep to find good values.
         #os.getenv('KEY_THAT_MIGHT_EXIST', default_value)
         #self.threshold1l = float(os.getenv('RAY_SCHED_THRESHOLD1L', 2)) / float(self._node_runtime.num_nodes)
@@ -950,7 +950,8 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
             self._forward_to_global(task, scheduled_locally = True)
 
         #if the local scheduler has very low load, even with expected objects this still reduces to the trivial case (depending on the "low load" threshold)
-        elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and (float(self.threshold1l) >= float(local_load))):
+        elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and 
+                                                    (max(float(self.threshold1l), float(self._node_runtime.num_workers)*avg_task_time) >= float(local_load))):
             self._pylogger.debug('all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally on node {}'.format(local_load, self.threshold1l, task.id(), self._node_id))
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)

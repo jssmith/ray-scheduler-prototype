@@ -632,7 +632,7 @@ class ComputationDescription():
         self.is_combined = True
         root = self._tasks[self._root_task]
         num_phases = root.num_phases()
-        assert(num_phases == 1)
+        assert(num_phases == 2)
         for submit in root.get_phase(0).submits:
             self._tasks[submit.task_id].is_root = True
 
@@ -867,6 +867,9 @@ class Task():
 
     def get_results(self):
         return self._results
+
+    def add_result(self, result):
+        self._results.append(result)
 
 
 class TaskPhase():

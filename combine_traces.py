@@ -5,6 +5,7 @@ import gzip
 
 from replaystate import TaskSubmit
 from replaystate import TaskPhase
+from replaystate import TaskResult
 from replaystate import Task
 from replaystate import ComputationDescription
 from replaystate import computation_decoder
@@ -107,6 +108,14 @@ def get_object_ids(computation):
     assert(len(object_ids) == len(set(object_ids)))
     return object_ids
 
+def insert_unique_id(ids):
+    new_id = str(random.randint(0, MAX_ID))
+    while new_id in ids:
+        new_id = str(random.randint(0, MAX_ID))
+    ids.append(new_id)
+    return new_id
+
+
 def merge_computation(computation1, computation2, offset,
                       computation1_task_ids,
                       computation1_object_ids):
@@ -128,11 +137,8 @@ def merge_computation(computation1, computation2, offset,
             continue
         # Task ID collision. Replace all instances of task_id in computation2
         # with a unique task ID.
-        new_task_id = str(random.randint(0, MAX_ID))
-        while new_task_id in computation1_task_ids:
-            new_task_id = str(random.randint(0, MAX_ID))
+        new_task_id = insert_unique_id(computation1_task_ids)
         replace_task_id(computation2, task_id, new_task_id)
-        computation1_task_ids.append(new_task_id)
 
     # Replace all object IDs in computation2 that appear in computation1 with a
     # new object ID.
@@ -142,11 +148,8 @@ def merge_computation(computation1, computation2, offset,
             continue
         # Object ID collision. Replace all instances of object_id in computation2
         # with a unique object ID.
-        new_object_id = str(random.randint(0, MAX_ID))
-        while new_object_id in computation1_object_ids:
-            new_object_id = str(random.randint(0, MAX_ID))
+        new_object_id = insert_unique_id(computation1_object_ids)
         replace_object_id(computation2, object_id, new_object_id)
-        computation1_object_ids.append(new_object_id)
 
     # Merge in all of computation2's tasks into computation1.
     for task_id, task in computation2._tasks.iteritems():
@@ -157,6 +160,16 @@ def merge_computation(computation1, computation2, offset,
     root_task = computation1._tasks[computation1._root_task]
     phase0 = root_task.get_phase(0)
     phase0.submits.append(TaskSubmit(computation2._root_task, offset))
+
+    # Make sure computation1 waits for computation2 to finish by generating a
+    # result object for computation2 that computation1 will depend on in its
+    # second phase.
+    result_id = insert_unique_id(computation1_object_ids)
+    root_task2 = computation2._tasks[computation2._root_task]
+    root_task2.add_result(TaskResult(result_id, 0))
+    root_last_phase = root_task.get_phase(1)
+    root_last_phase.depends_on.append(result_id)
+
     return computation1_task_ids, computation1_object_ids
 
 def merge_computations(computations, offsets):
@@ -165,23 +178,23 @@ def merge_computations(computations, offsets):
     representing the aggregate computation graph.
     """
     # Create a mock computation graph that will submit all of the other
-    # computations.
+    # computations. Its root task's second phase will depend on all of the
+    # actual computations' results, so that the driver does not exit until all
+    # computation graphs have finished.
     root_task_id = "0"
     root_phase = TaskPhase(0, [], [], sum(offsets), [])
+    root_last_phase = TaskPhase(1, [], [], 0, [])
     computation = ComputationDescription(root_task_id, [
-        Task(root_task_id, [root_phase], []),
+        Task(root_task_id, [root_phase, root_last_phase], []),
         ])
     computation.mark_combined()
 
     # Merge the computations into the mock computation.
-    task_ids = None
-    object_ids = None
+    task_ids = get_task_ids(computation)
+    object_ids = get_object_ids(computation)
     offset = 0
     while computations:
         computation_to_merge = computations.pop(0)
-        if task_ids is None:
-            task_ids = get_task_ids(computation)
-            object_ids = get_object_ids(computation)
         offset += offsets.pop(0)
         task_ids, object_ids = merge_computation(computation,
                 computation_to_merge, offset, task_ids, object_ids)

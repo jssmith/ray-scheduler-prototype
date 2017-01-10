@@ -25,19 +25,20 @@ def run_workload(num_workers):
         os.unlink(RAY_LOGS)
 
     # Run the workload.
-    proc = subprocess.Popen(["python", RUN_WORKLOAD_SCRIPT,
-                             "--workers", str(num_workers),
-                             ],
-                            stdout=subprocess.PIPE
-                            )
-    proc.wait()
-    output = proc.stdout.read()
-    output = output.split('\n')
-    for line in output:
-        try:
-            runtime = float(line)
-        except:
-            continue
+    with open('out', 'w') as stdout_log:
+        proc = subprocess.Popen(["python", RUN_WORKLOAD_SCRIPT,
+                                 "--workers", str(num_workers),
+                                 ],
+                                stdout=stdout_log,
+                                )
+        proc.wait()
+    with open('out', 'r') as stdout_log:
+        for line in stdout_log.readlines():
+            try:
+                runtime = float(line)
+                break
+            except:
+                continue
 
     # Build the trace.
     proc = subprocess.Popen(["python", BUILD_TRACE_SCRIPT,
@@ -48,22 +49,23 @@ def run_workload(num_workers):
 def run_simulation(num_workers, num_simulation_workers):
     trace_filename = get_trace_filename(num_workers)
     with open(os.devnull, 'w') as DEVNULL:
-        proc = subprocess.Popen(["python", "../replaytrace.py",
-                                 str(NUM_NODES),
-                                 str(num_simulation_workers),
-                                 str(DATA_TRANSFER_COST),
-                                 str(DB_MESSAGE_DELAY),
-                                 RAY_SCHEDULER,
-                                 "lru",
-                                 "true",
-                                 trace_filename,
-                                 ],
-                                stdout=subprocess.PIPE,
-                                stderr=DEVNULL,
-                                )
-    proc.wait()
-    output = proc.stdout.read()
-    lines = output.split('\n')
+        with open('out', 'w') as stdout_log:
+            proc = subprocess.Popen(["python", "../replaytrace.py",
+                                     str(NUM_NODES),
+                                     str(num_simulation_workers),
+                                     str(DATA_TRANSFER_COST),
+                                     str(DB_MESSAGE_DELAY),
+                                     RAY_SCHEDULER,
+                                     "lru",
+                                     "true",
+                                     trace_filename,
+                                     ],
+                                    stdout=stdout_log,
+                                    stderr=DEVNULL,
+                                    )
+        proc.wait()
+    with open('out', 'r') as f:
+        lines = f.readlines()
     runtime = float(lines[-1].split(':')[0])
     return runtime
 
@@ -83,8 +85,8 @@ def generate_data(min_num_workers, max_num_workers, step_size):
                 ))
         actual_runtimes.append((num_workers, actual_runtime))
         simulation_runtimes = []
-        #print ("Running simulations for {} workers".format(num_workers))
         for num_simulation_workers in num_workers_range:
+            print ("Running {} worker simulation for {} workers".format(num_simulation_workers, num_workers))
             simulation_runtime = run_simulation(num_workers, num_simulation_workers)
             simulation_runtimes.append((num_simulation_workers, simulation_runtime))
             with open('output.csv', 'a') as f:
@@ -100,7 +102,7 @@ def generate_data(min_num_workers, max_num_workers, step_size):
 if __name__ == '__main__':
     import sys
     max_num_workers = int(sys.argv[1])
-    actual_runtimes, simulation_runtimes = generate_data(2, max_num_workers, 2)
+    actual_runtimes, simulation_runtimes = generate_data(2, max_num_workers, 1)
     with open('output.json', 'w') as f:
         f.write(json.dumps({
             "actual": actual_runtimes,

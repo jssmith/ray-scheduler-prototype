@@ -824,6 +824,10 @@ class ComputationDescription():
     def get_task_ids(self):
         return self._tasks.keys()
 
+    def get_total_task_time(self):
+        phases = [task.get_phase(i) for task in self._tasks.values() for i in range(task.num_phases())]
+        return sum(phase.duration for phase in phases)
+
 
 class Task():
     def __init__(self, task_id, phases, results):

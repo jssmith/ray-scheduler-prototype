@@ -11,6 +11,11 @@ from replaystate import ComputationDescription
 from replaystate import computation_decoder
 
 
+# This factor determines the offset between repetitions of a computation, if an
+# offset is not already provided by the user. The higher the factor, the closer
+# together repetitions will be.
+OFFSET_FACTOR = 4
+
 MAX_ID = 2**64
 
 def replace_object_id(computation, old_object_id, new_object_id):
@@ -243,6 +248,9 @@ def serialize_computation(computation):
                       indent=4,
                       separators=(',', ': '))
 
+def compute_offset(computation, num_repetitions):
+    return (computation.get_total_task_time() / num_repetitions) / OFFSET_FACTOR
+
 parser = argparse.ArgumentParser(description="Take the trace of one job and "
         "repeat it n times, with a constant time offset between each "
         "repetition.")
@@ -250,7 +258,7 @@ parser.add_argument("--trace-filename", type=str, required=True,
                     help="Trace filename")
 parser.add_argument("--repetitions", type=int, required=True,
                     help="The number of times to repeat the job")
-parser.add_argument("--offset", type=float, required=True,
+parser.add_argument("--offset", type=float,
                     help="The time offset between repetitions")
 parser.add_argument("--output-filename", default="combined.json", type=str,
                     help="The time offset between repetitions")
@@ -259,13 +267,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     trace_filename = args.trace_filename
     repetitions = args.repetitions
-    offset = args.offset
+    offset = getattr(args, 'offset', None)
     output_filename = args.output_filename
 
-    # Create the list of time offsets. The first repetition will be submitted
-    # immediately.
-    offsets = [offset] * repetitions
-    offsets[0] = 0
     # Create the list of computation repetitions.
     computations = []
     for i in range(repetitions):
@@ -278,6 +282,16 @@ if __name__ == '__main__':
                                            object_hook=computation_decoder))
         finally:
             f.close()
+    # Create the list of time offsets. The first repetition will be submitted
+    # immediately. If no offset was provided, compute the offset based on a
+    # single computation's size.
+    if offset is None:
+        offset = compute_offset(computations[0], repetitions)
+    print("Combining {} repetitions of trace {}, with an offset of"
+          " {}".format(repetitions, trace_filename, offset))
+    offsets = [offset] * repetitions
+    offsets[0] = 0
+
     computation = merge_computations(computations, offsets)
     if output_filename.endswith('.gz'):
         f = gzip.open(output_filename, 'wb')

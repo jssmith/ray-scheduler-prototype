@@ -7,8 +7,13 @@ import redis
 import binascii
 import subprocess32 as subprocess
 
-from ray.worker import LOG_SPAN_START, LOG_SPAN_END, LOG_POINT
 from photon import task_from_string, ObjectID
+
+# Hack to suppress Ray errors from printing. These must be kept in sync with
+# worker.py.
+LOG_POINT = 0
+LOG_SPAN_START = 2
+LOG_SPAN_END = 2
 
 ROOT_TASK_ID = "0"
 

@@ -366,8 +366,14 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         self._pylogger = TimestampedLogger(__name__ + '.TransferCostAwareGlobalScheduler', system_time)
         self._schedcycle = 1; #seconds
         self._initializing = True
-        self._event_loop.add_timer(self._schedcycle,
+        id = self._event_loop.add_timer(self._schedcycle,
                                   TransferCostAwareGlobalScheduler._handle_timer, (self, ))
+        self._last_tstamp = 0
+        self._interarrival_times = []
+        self._last_submit_tstamp = 0
+
+        self._lasttimer_id = id
+        self._lasttimer_tstamp = self._system_time.get_time()
 
     def _get_worker_capacities(self, node_id_list):
         ''' given an ordered list of node ids, return a corresponding list of node capacities.
@@ -501,14 +507,21 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
             assert(len(completion_times) > 0)
             # print "completion_times: ", completion_times
 
-            self._schedcycle = np.mean(completion_times)/10.0
-            # print "[ALEXEY] schedcycle=%s pending=%s executing=%s" \
-            #   % (self._schedcycle, len(self._state.pending_tasks), len(self._state.executing_tasks))
+
+            factors = [2 ** (1 + i - len(self._interarrival_times)) for i in range(len(self._interarrival_times) - 1)]
+            factors = [factors[0]] + factors
+            self._schedcycle = np.dot(self._interarrival_times, factors)
+            #mu = np.mean(self._interarrival_times)
+            self._schedcycle = self._schedcycle * 10 * 2**self._last_submit_tstamp
+            self._last_submit_tstamp += 1
+            print "[ALEXEY] schedcycle=%s pending=%s executing=%s" \
+              % (self._schedcycle, len(self._state.pending_tasks), len(self._state.executing_tasks))
 
         # in all other cases, fire timer
         if setnewtimer == True:
-            self._event_loop.add_timer(self._schedcycle,
+            self._lasttimer_id = self._event_loop.add_timer(self._schedcycle,
                                    TransferCostAwareGlobalScheduler._handle_timer, (self,))
+            self._lasttimer_tstamp = self._system_time.get_time() ## XXX: is it the same as event_loop time ?
 
 
     def _apply_task_policy_trivial(self, task_id_list, workercaps):
@@ -563,8 +576,31 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
     def _handle_update(self, update):
        self._state.update(update, self._system_time.get_time())
        # trigger the timer handler for each arriving task -- needed to handle an arrival burst more rapidly.
-       #if isinstance(update, ForwardTaskUpdate):
-       TransferCostAwareGlobalScheduler._handle_timer((self,), setnewtimer=False)
+       if isinstance(update, ForwardTaskUpdate):
+           new_tstamp = self._system_time.get_time()
+           delta = new_tstamp - self._last_tstamp
+           self._interarrival_times.append(delta)
+           self._last_tstamp = new_tstamp
+        #reset the timer if necessary on task update events
+       if isinstance(update, ForwardTaskUpdate) or isinstance(update, ObjectReadyUpdate):
+           self._last_submit_tstamp = max(self._last_submit_tstamp - 1, 0)
+           newschedcycle = self._schedcycle/2.0
+           # 1. new alarm time < now
+           # 2. new alarm time > now but < old alarm time
+           # 3. new alarm time > old alarm => do nothing
+           new_alarm_time = newschedcycle + self._lasttimer_tstamp
+           if new_alarm_time > self._lasttimer_tstamp + self._schedcycle: #3
+                return
+           self._event_loop.remove_timer(self._lasttimer_id)
+           if new_alarm_time <= self._system_time.get_time(): #1
+               TransferCostAwareGlobalScheduler._handle_timer((self,), setnewtimer=True)
+           else: #2
+               self._lasttimer_id = self._event_loop.add_timer(new_alarm_time - self._system_time.get_time(),
+                                                               TransferCostAwareGlobalScheduler._handle_timer, (self,))
+               #self._lasttimer_tstamp = self._system_time.get_time()
+           #if (newschedcycle + self._lasttimer_tstamp > self._system_time.get_time())
+           #self._event_loop.remove_timer(self._lasttimer_id)
+       #TransferCostAwareGlobalScheduler._handle_timer((self,), setnewtimer=False)
 
     # def _select_node(self, task_id):
     #     #construct an optimization problem just for one task

@@ -59,7 +59,7 @@ class ReplaySchedulerDatabase(AbstractSchedulerDatabase):
     def object_ready(self, object_description, submitting_node_id):
         self._yield_global_scheduler_update(ObjectReadyUpdate(object_description, submitting_node_id))
 
-    def register_node(self, node_id, num_workers):
+    def register_node(self, node_id, num_workers, resource_capacity):
         print 'Not implemented: register_node'
         sys.exit(1)
 
@@ -337,7 +337,7 @@ class ObjectDescription():
 
 
 class NodeRuntime():
-    def __init__(self, event_simulation, object_store, logger, computation, node_id, num_workers, num_nodes):
+    def __init__(self, event_simulation, object_store, logger, computation, node_id, num_workers, resource_capacity, num_nodes):
         self._pylogger = TimestampedLogger(__name__+'.NodeRuntime', event_simulation)
         self._event_simulation = event_simulation
         self._object_store = object_store
@@ -345,9 +345,17 @@ class NodeRuntime():
         self._computation = computation
         self._update_handlers = []
         self.num_workers = num_workers
+        self.resource_capacity = resource_capacity
         self.node_id = node_id
         self.num_nodes = num_nodes
         self.num_workers_executing = 0
+        self.resources_executing = {}
+        for resource in self.resource_capacity.keys():
+          self.resources_executing[resource] = 0
+
+
+        self.blocked_tasks = []
+
 
         self._time_buffer_size = 30
         self._task_start_times = deque([0], self._time_buffer_size)   
@@ -398,6 +406,32 @@ class NodeRuntime():
     def free_workers(self):
         return self.num_workers - self.num_workers_executing
 
+    def free_resource(self, resource):
+        return self.resource_capacity[resource] - self.resources_executing[resource]
+
+    def free_resources(self):
+        free_resources_flag = False
+        for resource in self.resource_capacity.keys():
+           if self.resource_capacity[resource] != self.resources_executing[resource]:
+              free_resources_flag = True
+        return free_resources_flag             
+
+
+    def enough_resources(self, resources):
+        free_resources_flag = True
+        for resource in resources:
+           free_resources_flag = free_resources_flag and (self.free_resource(resource) > 0)
+        return free_resources_flag
+
+    def acquire_resources(self, resources):
+       for resource in resources.keys():
+         self.resources_executing[resource] += resources[resource]
+
+    def release_resources(self, resources):
+       for resource in resources.keys():
+         self.resources_executing[resource] -= resources[resource]
+
+
     class TaskSubmitted():
         def __init__(self, submitted_task_id, phase_id):
             self.submitted_task_id = submitted_task_id
@@ -427,7 +461,7 @@ class NodeRuntime():
             if not self.object_dependencies:
                 self._node_runtime._execute_phase_immediate(self._task_id, self._phase_id)
 
-    def _start_task(self, task_id):
+    def _start_task(self, task_id, task_resources):
         self._task_start_times.append(self._event_simulation.get_time())
         self._task_start_times_map[task_id] = self._event_simulation.get_time()
         self.num_workers_executing += 1
@@ -436,9 +470,25 @@ class NodeRuntime():
 
     def _process_tasks(self):
         #print "threshold scheduler debug: dispatcher queue in node {} is {}".format(self.node_id, self._queue)
-        while self.num_workers_executing < self.num_workers and self._queue:
-            (_, _, task_id) = heapq.heappop(self._queue)
-            self._start_task(task_id)
+        #old implementation
+        #while self.num_workers_executing < self.num_workers and self._queue:
+        #    (_, _, task_id) = heapq.heappop(self._queue)
+        #    self._start_task(task_id)
+        
+        #since we now have a vector of resources, we might have elements deeper in the queue that do have enough resources, while the
+        #front of the queue does not. Therefore we need to scan through the entire queue (popping out all the elements and pushing them
+        #into a new queue) to do that
+        if self.free_resources():
+            temp_queue = []
+            while self._queue
+                (priorirty,seq,task_id) = heapq.heappop(self._queue)
+                task_resources = self._computation.get_task(task_id).get_resources()
+                if self.enough_resources(task_resources):
+                   self._start_task(task_id)
+                else:
+                   heapq.heappush(self.temp_queue, (priority,seq,task_id))
+            self._queue = temp_queue
+        
 
     def _yield_update(self, update):
         for update_handler in self._update_handlers:
@@ -448,6 +498,8 @@ class NodeRuntime():
         self._pylogger.debug('executing task {} phase {}'.format(task_id, phase_id))
         self._logger.task_phase_started(task_id, phase_id, self.node_id)
         task_phase = self._computation.get_task(task_id).get_phase(phase_id)
+        task_resources = self._computation.get_task(task_id).get_resources()
+        self.acquire_resources(task_resources)
         for d_object_id in task_phase.depends_on:
             self._object_store.use_object(d_object_id, self.node_id)
         for put_event in task_phase.creates:
@@ -482,6 +534,8 @@ class NodeRuntime():
                 self.num_workers += 1
             self._execute_phase_immediate(task_id, phase_id)
         else:
+            self.release_resources(task.get_resources())
+            self.blocked_tasks.append((task_id,phase_id))
             self._pylogger.debug('task {} phase {} waiting for dependencies: {}'.format(task_id, phase_id, str(needs.object_dependencies)))
 
     def _handle_update(self, update):
@@ -505,6 +559,7 @@ class NodeRuntime():
                 if task.is_root:
                     self._yield_update(AddWorkerUpdate(increment=-1))
                 self.num_workers_executing -= 1
+                self.release_resources(task.get_resources())
                 self._task_times.append(self._event_simulation.get_time() - self._task_start_times_map.get(update.task_id, 0)) 
                 #print "task_times: {}".format(self._task_times)
                 self._event_simulation.schedule_immediate(lambda: self._process_tasks())
@@ -831,6 +886,8 @@ class Task():
         self._task_id = task_id_str
         self._phases = phases
         self._results = results
+        self._resources = {}
+        self._resources['cpu'] = 1
 
         # Depth is assigned by ComputationDescription
         self.depth = None
@@ -854,6 +911,9 @@ class Task():
 
     def get_results(self):
         return self._results
+
+    def get_resources(self):
+        return self._resources
 
 
 class TaskPhase():

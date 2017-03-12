@@ -62,9 +62,11 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
     local_scheduler_kwargs['global_state'] = global_state
     global_scheduler_kwargs['global_state'] = global_state 
     for node_id in range(0, num_nodes):
+        local_node_resource = {}
+        local_node_resources['cpu'] = num_workers_per_node
         local_runtime = replaystate.NodeRuntime(event_simulation, object_store,
                                                 logger, computation, node_id,
-                                                num_workers_per_node, num_nodes)
+                                                num_workers_per_node, local_node_resources, num_nodes)
         local_event_loop = replaystate.EventLoop(event_simulation)
         local_nodes[node_id] = (local_runtime, local_event_loop)
         local_runtimes[node_id] = local_runtime
@@ -76,8 +78,12 @@ def simulate(computation, scheduler_cls, event_simulation, logger, num_nodes,
     scheduler_db.schedule_root(0)
     event_simulation.advance_fully()
     num_workers_executing = 0
+    resources_executing = {}
     for node_id, local_runtime in local_runtimes.items():
         num_workers_executing += local_runtime.num_workers_executing
+        resources = local_runtime.resource_capacity
+        for resource in resources.keys():
+          resources_executing[resource] += local_runtime.resources_executing[resource]
     if enable_analysis:
         total_num_tasks, normalized_critical_path, total_tasks_durations, total_num_objects, total_objects_size = computation.analyze()
     else:

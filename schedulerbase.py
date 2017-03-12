@@ -100,16 +100,17 @@ class ObjectReadyUpdate():
 
 
 class RegisterNodeUpdate():
-    def __init__(self, node_id, num_workers):
+    def __init__(self, node_id, num_workers, resource_capacity):
         self.node_id = str(node_id)
         self.num_workers = num_workers
+        self.resource_capacity = resource_capacity
 
     def __str__(self):
-      return 'RegisterNode({},{})'.format(self.node_id, self.num_workers)
+      return 'RegisterNode({},{})'.format(self.node_id, self.num_workers, self.resource_capacity)
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            return self.node_id == other.node_id and self.num_workers == other.num_workers
+            return self.node_id == other.node_id and self_num_workers == other.num_workers and self.resource_capacity == other.resource_capacity
         else:
             return False
 
@@ -190,7 +191,7 @@ class AbstractSchedulerDatabase():
         pass
 
     @abc.abstractmethod
-    def register_node(self, node_id, num_workers):
+    def register_node(self, node_id, num_workers, resource_capacity):
         """Report addition of a new node
 
            Args:

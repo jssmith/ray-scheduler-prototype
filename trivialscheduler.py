@@ -41,19 +41,28 @@ class GlobalSchedulerState():
         self.is_shutdown = False
 
     class _NodeStatus:
-        def __init__(self, node_id, num_workers):
+        def __init__(self, node_id, num_workers, resource_capacity):
             self.node_id = node_id
             self.num_workers = num_workers
             self.num_workers_executing = 0
+            self.resource_capacity = resource_capacity
+            self.resources_executing = {}
+            for resource in self.resource_capacity:
+              resources_executing[resource] = 0
 
-        def inc_executing(self):
+
+        def inc_executing(self, resources):
             self.num_workers_executing += 1
+            for resource in resources.key:
+                self.resources_executing[resource] += resources[resource]
 
-        def dec_executing(self):
+        def dec_executing(self, resources):
             self.num_workers_executing -= 1
+            for resource in resources.key:
+                self.resources_executing[resource] -= resources[resource]
 
         def __str__(self):
-            return 'NodeStatus({},{},{})'.format(self.node_id, self.num_workers, self.num_workers_executing)
+            return 'NodeStatus({},{},{},{},{})'.format(self.node_id, self.num_workers, self.num_workers_executing,self.resource_capacity,self.resources_executing)
 
     def _update_task_timestats(self, task_id, statestr, timestamp):
         assert(statestr in ["started", "added", "finished"])
@@ -65,7 +74,8 @@ class GlobalSchedulerState():
 
     def set_executing(self, task_id, node_id, timestamp):
         node_status = self.nodes[node_id]
-        node_status.inc_executing()
+        task_status = self.tasks[task_id]
+        node_status.inc_executing(task_status.get_resources())
         if task_id in self.runnable_tasks:
             self.runnable_tasks.remove(task_id)
         self.executing_tasks[task_id] = node_id
@@ -94,11 +104,11 @@ class GlobalSchedulerState():
         else:
             raise NotImplementedError('Unknown update {}'.format(update.__class__.__name__))
 
-    def _register_node(self, node_id, num_workers):
+    def _register_node(self, node_id, num_workers,resource_capacity):
         if node_id in self.nodes.keys():
             print 'already registered node {}'.format(node_id)
             sys.exit(1)
-        self.nodes[node_id] = self._NodeStatus(node_id, num_workers)
+        self.nodes[node_id] = self._NodeStatus(node_id, num_workers,resource_capacity)
 
     def _add_task(self, task, submitting_node_id, is_scheduled_locally, timestamp):
         task_id = task.id()
@@ -121,7 +131,8 @@ class GlobalSchedulerState():
 
     def _finish_task(self, task_id):
         node_id = self.executing_tasks[task_id]
-        self.nodes[node_id].dec_executing()
+        task_status = self.tasks[task_id]
+        self.nodes[node_id].dec_executing(task_status.get_resources())
         del self.executing_tasks[task_id]
         for result in self.tasks[task_id].get_results():
             object_id = result.object_id
@@ -201,11 +212,11 @@ class TrivialGlobalScheduler(BaseGlobalScheduler):
             task_id))
         for node_id, node_status in sorted(self._state.nodes.items()):
             self._pylogger.debug("can we schedule task {} on node {}? {} < {} so {}".format(
-                task_id, node_id, node_status.num_workers_executing,
-                node_status.num_workers,
-                bool(node_status.num_workers_executing < node_status.num_workers)))
+                task_id, node_id, node_status.resources_executing['cpu'],
+                node_status.resource_capacity['cpu'],
+                bool(node_status.resources_executing['cpu'] < node_status.resource_capacity['cpu'])))
             #print "global scheduler: node {} num of workers executing {} total num of workers {}".format(node_id, node_status.num_workers_executing, node_status.num_workers)
-            if node_status.num_workers_executing < node_status.num_workers:
+            if node_status.resources_executing['cpu'] < node_status.resource_capacity['cpu']:
                 print "[%s] assigned node = %s" %(self._system_time.get_time(), node_id)
                 return node_id
         return None
@@ -278,7 +289,7 @@ class LocationAwareGlobalScheduler(BaseGlobalScheduler):
         # TODO short-circuit cost computation if there are no dependencies.
         #      also may optimize lookup strategy for one or two dependencies.
         for (node_id, node_status) in sorted(self._state.nodes.items()):
-            if node_status.num_workers_executing < node_status.num_workers:
+            if node_status.resources_executing['cpu'] < node_status.resource_capacity['cpu']:
                 cost = 0
                 for depends_on in task_deps:
                     if not self._state.object_ready(depends_on, node_id):
@@ -312,7 +323,7 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
             if cost < best_cost or (cost == best_cost and not best_node_ready):
                 best_cost = cost
                 best_node_id = node_id
-                best_node_ready = node_status.num_workers_executing < node_status.num_workers
+                best_node_ready = node_status.resources_executing['cpu'] < node_status.resource_capacity['cpu']
         if best_node_id is None:
             raise RuntimeError('unexpected state')
         return (best_node_id, best_node_ready)
@@ -349,7 +360,7 @@ class DelayGlobalScheduler(BaseGlobalScheduler):
         if task_id in self._waiting_tasks.keys():
             # trivial scheduler algorithm, place anywhere available
             for node_id, node_status in sorted(self._state.nodes.items()):
-                if node_status.num_workers_executing < node_status.num_workers:
+                if node_status.resources_executing['cpu'] < node_status.resource_capacity['cpu']:
                     self._pylogger.debug("delay exceeded, scheduling task {} on node {}".format(
                         task_id, node_id))
                     del self._waiting_tasks[task_id]
@@ -380,8 +391,8 @@ class TransferCostAwareGlobalScheduler(BaseGlobalScheduler):
         for node_id in node_id_list:
             node_status = self._state.nodes[node_id]
             node_cap = 0
-            if node_status.num_workers_executing < node_status.num_workers:
-                node_cap = node_status.num_workers - node_status.num_workers_executing
+            if node_status.resources_executing['cpu'] < node_status.resource_capacity['cpu']:
+                node_cap = node_status.resource_capacity['cpu'] - node_status.resource_executing['cpu']
             node_caps.append(node_cap)
 
         return node_caps
@@ -773,7 +784,9 @@ class SimpleLocalScheduler(PassthroughLocalScheduler):
                                            scheduler_db, event_loop, **kwargs)
 
     def _schedule_locally(self, task):
-        if self._node_runtime.free_workers() == 0:
+        resources_available_flag=0
+        task_resources = task.get_resources()
+        if not self._node_runtime.enough_resource(task.get_resources):
             return False
         for d_object_id in task.get_phase(0).depends_on:
             if self._node_runtime.is_local(d_object_id) != ObjectStatus.READY:
@@ -928,7 +941,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         self._pylogger.debug('avg_task_time is {}'.format(avg_task_time))
         self._pylogger.debug('dispatcher_load is {}'.format(dispatcher_load))
         #local_load = 0 if (node_efficiency_rate == 0 or avg_task_time == 0) else (((dispatcher_load+self._node_runtime.num_workers_executing) / node_efficiency_rate))
-        local_load = 0 if (node_efficiency_rate == 0 or avg_task_time == 0) else ((dispatcher_load+self._node_runtime.num_workers_executing) * avg_task_time)
+        local_load = 0 if (node_efficiency_rate == 0 or avg_task_time == 0) else ((dispatcher_load+self._node_runtime.resources_executing['cpu']) * avg_task_time)
         self._pylogger.debug('local load is {}'.format(local_load))
 
         for d_object_id in task.get_phase(0).depends_on:
@@ -944,14 +957,14 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         
 
         #the trivial case
-        if len(task.get_phase(0).depends_on) == objects_status['local_ready'] and self._node_runtime.free_workers() > 0:
+        if len(task.get_phase(0).depends_on) == objects_status['local_ready'] and self._node_runtime.free_resource('cpu') > 0:
             self._pylogger.debug('all objects ready locally and there are free workers, so scheduling task {} locally'.format(task.id()))
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)
 
         #if the local scheduler has very low load, even with expected objects this still reduces to the trivial case (depending on the "low load" threshold)
         elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and 
-                                                    (max(float(self.threshold1l), float(self._node_runtime.num_workers)*avg_task_time) >= float(local_load))):
+                                                    (max(float(self.threshold1l), float(self._node_runtime.resource_capacity['cpu'])*avg_task_time) >= float(local_load))):
             self._pylogger.debug('all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally on node {}'.format(local_load, self.threshold1l, task.id(), self._node_id))
             self._node_runtime.send_to_dispatcher(task, 1)
             self._forward_to_global(task, scheduled_locally = True)

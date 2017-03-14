@@ -392,8 +392,9 @@ class NodeRuntime():
         return 1 if len(self._task_times) == 0 else sum(self._task_times) / len(self._task_times)
 
     def send_to_dispatcher(self, task, priority):
-        for result in task.get_results():
-        	self._object_store.expect_object(result.object_id, self.node_id)
+        if priority != 0: #if this is not a continuing task that was already started
+           for result in task.get_results():
+               self._object_store.expect_object(result.object_id, self.node_id)
         self._pylogger.debug('Dispatcher at node {} received task {} with priority {}'.format(self.node_id, task.id(), priority))
         task_id = task.id()
         heapq.heappush(self._queue, (priority, self._queue_seq, task_id))
@@ -459,14 +460,21 @@ class NodeRuntime():
         def object_available(self, object_id):
             self.object_dependencies.remove(object_id)
             if not self.object_dependencies:
-                self._node_runtime._execute_phase_immediate(self._task_id, self._phase_id)
+                #old implementation without releasing-resources
+                #self._node_runtime._execute_phase_immediate(self._task_id, self._phase_id)
+                self.send_to_dispatcher(task_id,0)
 
-    def _start_task(self, task_id, task_resources):
+    def _start_task(self, task_id):
         self._task_start_times.append(self._event_simulation.get_time())
         self._task_start_times_map[task_id] = self._event_simulation.get_time()
         self.num_workers_executing += 1
         self._logger.task_started(task_id, self.node_id)
         self._internal_scheduler_schedule(task_id, 0)
+
+
+    def _continue_task(self, task_id, task_phase):
+        self._logger.task_started(task_id, self.node_id)
+
 
     def _process_tasks(self):
         #print "threshold scheduler debug: dispatcher queue in node {} is {}".format(self.node_id, self._queue)
@@ -480,11 +488,14 @@ class NodeRuntime():
         #into a new queue) to do that
         if self.free_resources():
             temp_queue = []
-            while self._queue
+            while self._queue:
                 (priorirty,seq,task_id) = heapq.heappop(self._queue)
                 task_resources = self._computation.get_task(task_id).get_resources()
                 if self.enough_resources(task_resources):
-                   self._start_task(task_id)
+                   if self._computation.get_task(task_id).get_next_phase_to_run(): #if this is a continuing task (phase is not 0. it was preemted earlier)
+                      self._continue_task(task_id, self._computation.get_task(task_id).get_next_phase_to_run())
+                   else: #if this is a new task (phase 0)
+                      self._start_task(task_id)
                 else:
                    heapq.heappush(self.temp_queue, (priority,seq,task_id))
             self._queue = temp_queue
@@ -517,6 +528,7 @@ class NodeRuntime():
                     )
         for schedule_task in task_phase.submits:
             self._event_simulation.schedule_delayed(schedule_task.time_offset, lambda s_task_id=schedule_task.task_id: self._handle_update(self.TaskSubmitted(s_task_id, 0)))
+        self._computation.get_task(task_id).increment_next_phase_to_run()
         self._event_simulation.schedule_delayed(task_phase.duration, lambda: self._handle_update(self.TaskPhaseComplete(task_id, phase_id)))
 
     def _internal_scheduler_schedule(self, task_id, phase_id):
@@ -894,6 +906,9 @@ class Task():
 
         self.is_root = False
 
+        self._next_phase_to_run = 0
+
+
     def id(self):
         return self._task_id
 
@@ -914,6 +929,12 @@ class Task():
 
     def get_resources(self):
         return self._resources
+
+    def get_next_phase_to_run(self):
+        return self._next_phase_to_run
+
+    def increment_next_phase_to_run(self):
+        self._next_phase_to_run += 1
 
 
 class TaskPhase():

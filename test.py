@@ -719,7 +719,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertEquals(num_workers, self.node_runtime.free_workers())
 
-        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self.node_runtime.send_to_dispatcher(task_0, 1)
 
         self.event_simulation.schedule_delayed(0.5, lambda: self._get_workers())
 
@@ -753,7 +753,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertEquals(num_workers, self.node_runtime.free_workers())
 
-        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self.node_runtime.send_to_dispatcher(task_0, 1)
 
         self.event_simulation.schedule_delayed(0.5, lambda: self._get_workers())
 
@@ -801,7 +801,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertEquals(num_workers, self.node_runtime.free_workers())
 
-        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self.node_runtime.send_to_dispatcher(task_0, 1)
 
         self.event_simulation.schedule_delayed(2.0, lambda: self._get_workers())
 
@@ -838,7 +838,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertEquals(num_workers, self.node_runtime.free_workers())
 
-        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self.node_runtime.send_to_dispatcher(task_0, 1)
 
         self.event_simulation.schedule_delayed(2.0, lambda: self._get_workers())
 
@@ -863,7 +863,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self._setup_node_runtime(computation, node_id, num_workers)
 
-        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self.node_runtime.send_to_dispatcher(task_0, 1)
 
         self._advance()
 
@@ -895,7 +895,7 @@ class TestNodeRuntime(unittest.TestCase):
 
         self.assertEquals(num_workers, self.node_runtime.free_workers())
 
-        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self.node_runtime.send_to_dispatcher(task_0, 1)
 
         self._advance()
 
@@ -910,7 +910,7 @@ class TestNodeRuntime(unittest.TestCase):
         self.assertItemsEqual([], self.updates)
         self.assertItemsEqual([], self.objects_added)
 
-        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self.node_runtime.send_to_dispatcher(task_1, 1)
 
         self._advance()
 
@@ -932,20 +932,20 @@ class TestNodeRuntime(unittest.TestCase):
 
         self._setup_node_runtime(computation, node_id, num_workers)
 
-        self.node_runtime.send_to_dispatcher(task_1, 0)
-        self.node_runtime.send_to_dispatcher(task_2, 0)
+        self.node_runtime.send_to_dispatcher(task_1, 1)
+        self.node_runtime.send_to_dispatcher(task_2, 1)
         self._advance()
         self.assertItemsEqual([(1.5, FinishTaskUpdate(task_1.id())), (3.0, FinishTaskUpdate(task_2.id()))], self.updates)
 
         self.updates = []
-        self.node_runtime.send_to_dispatcher(task_2, 0)
-        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self.node_runtime.send_to_dispatcher(task_2, 1)
+        self.node_runtime.send_to_dispatcher(task_1, 1)
         self._advance()
         self.assertItemsEqual([(4.5, FinishTaskUpdate(task_2.id())), (6.0, FinishTaskUpdate(task_1.id()))], self.updates)
 
         self.updates = []
-        self.node_runtime.send_to_dispatcher(task_2, 1)
-        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self.node_runtime.send_to_dispatcher(task_2, 2)
+        self.node_runtime.send_to_dispatcher(task_1, 1)
         self._advance()
         self.assertItemsEqual([(7.5, FinishTaskUpdate(task_1.id())), (9.0, FinishTaskUpdate(task_2.id()))], self.updates)
 
@@ -969,7 +969,7 @@ class TestNodeRuntime(unittest.TestCase):
         self.assertEquals(0.9, self.event_simulation.get_time())
 
         self.updates = []
-        self.node_runtime.send_to_dispatcher(task_1, 0)
+        self.node_runtime.send_to_dispatcher(task_1, 1)
         self._advance()
         self.assertItemsEqual([(2.4, FinishTaskUpdate(task_1.id()))], self.updates)
         self.assertEquals(2.4, self.event_simulation.get_time())
@@ -995,15 +995,15 @@ class TestNodeRuntime(unittest.TestCase):
         num_workers = 3
 
         self._setup_node_runtime(computation, node_id, num_workers)
-        self.node_runtime.send_to_dispatcher(task_0, 0)
+        self.node_runtime.send_to_dispatcher(task_0, 1)
         self._advance()
 
         self.assertItemsEqual([(0.4, SubmitTaskUpdate(task_1)), (0.4, SubmitTaskUpdate(task_2))], self.updates)
         self.assertEquals(0.9, self.event_simulation.get_time())
 
         self.updates = []
-        self.node_runtime.send_to_dispatcher(task_1, 0)
-        self.node_runtime.send_to_dispatcher(task_2, 0)
+        self.node_runtime.send_to_dispatcher(task_1, 1)
+        self.node_runtime.send_to_dispatcher(task_2, 1)
         self._advance()
         self.assertItemsEqual([(3.4, FinishTaskUpdate(task_1.id())), (1.4, FinishTaskUpdate(task_2.id()))], self.updates)
         self.assertEquals(3.4, self.event_simulation.get_time())

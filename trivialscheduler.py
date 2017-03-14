@@ -731,7 +731,7 @@ class PassthroughLocalScheduler():
     def _handle_scheduler_db_update(self, update):
         if isinstance(update, ScheduleTaskUpdate):
 #            print "Dispatching task " + str(update.task)
-            self._node_runtime.send_to_dispatcher(update.task, 0)
+            self._node_runtime.send_to_dispatcher(update.task, 1)
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
@@ -774,7 +774,7 @@ class FlexiblePassthroughLocalScheduler():
     def _handle_scheduler_db_update(self, update):
         if isinstance(update, ScheduleTaskUpdate):
 #            print "Dispatching task " + str(update.task)
-            self._node_runtime.send_to_dispatcher(update.task, 0)
+            self._node_runtime.send_to_dispatcher(update.task, 1)
         else:
             raise NotImplementedError('Unknown update: {}'.format(type(update)))
 
@@ -791,7 +791,7 @@ class SimpleLocalScheduler(PassthroughLocalScheduler):
         for d_object_id in task.get_phase(0).depends_on:
             if self._node_runtime.is_local(d_object_id) != ObjectStatus.READY:
                 return False
-        self._node_runtime.send_to_dispatcher(task, 1)
+        self._node_runtime.send_to_dispatcher(task, 2)
         return True
 
 
@@ -915,7 +915,7 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
                     self._scheduled_tasks.append(task_id)
                 else:
                     self._pylogger.debug('local load is medium, and task load is low. task load is {} and threshold is {}, so schedulling task {} locally on node {}'.format(task_load, self.threshold2, task.id(), self._node_id))
-                    self._node_runtime.send_to_dispatcher(task, 1)
+                    self._node_runtime.send_to_dispatcher(task, 2)
                     self._forward_to_global(task, scheduled_locally = True)
                     self._scheduled_tasks.append(task_id)
             del self._size_location_results[task_id]
@@ -959,14 +959,14 @@ class ThresholdLocalScheduler(FlexiblePassthroughLocalScheduler):
         #the trivial case
         if len(task.get_phase(0).depends_on) == objects_status['local_ready'] and self._node_runtime.free_resource('cpu') > 0:
             self._pylogger.debug('all objects ready locally and there are free workers, so scheduling task {} locally'.format(task.id()))
-            self._node_runtime.send_to_dispatcher(task, 1)
+            self._node_runtime.send_to_dispatcher(task, 2)
             self._forward_to_global(task, scheduled_locally = True)
 
         #if the local scheduler has very low load, even with expected objects this still reduces to the trivial case (depending on the "low load" threshold)
         elif ((len(task.get_phase(0).depends_on) == (objects_status['local_ready']+objects_status['local_expected'])) and 
                                                     (max(float(self.threshold1l), float(self._node_runtime.resource_capacity['cpu'])*avg_task_time) >= float(local_load))):
             self._pylogger.debug('all objects are either ready or expected locally, local load is {} and threshold is {}, so scheduling task {} locally on node {}'.format(local_load, self.threshold1l, task.id(), self._node_id))
-            self._node_runtime.send_to_dispatcher(task, 1)
+            self._node_runtime.send_to_dispatcher(task, 2)
             self._forward_to_global(task, scheduled_locally = True)
 
 
